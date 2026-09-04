@@ -3,13 +3,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
 import { AppState } from 'react-native';
 import { config } from './config';
+import type { Database } from '../types/database';
 
-// After stage 2 (`supabase gen types typescript`), change this to:
-//   import type { Database } from '../types/database';
-//   createClient<Database>(...)
-// Until then it stays untyped so stage 1 compiles.
-
-export const supabase = createClient(config.supabaseUrl, config.supabaseKey, {
+export const supabase = createClient<Database>(config.supabaseUrl, config.supabaseKey, {
   auth: {
     // Keeps the session on the device so returning users skip login entirely.
     storage: AsyncStorage,

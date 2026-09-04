@@ -1,0 +1,1 @@
+// Debounced catalogue search input.

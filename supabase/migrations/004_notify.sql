@@ -1,0 +1,1 @@
+-- Database webhook trigger for quote-request notifications.
