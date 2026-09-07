@@ -1,1 +1,5 @@
-// Auth stack layout for language, sign-in, and verify.
+import { Stack } from 'expo-router';
+
+export default function AuthLayout() {
+  return <Stack screenOptions={{ headerShown: false }} />;
+}

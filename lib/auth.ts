@@ -14,6 +14,7 @@
 
 import { supabase } from './supabase';
 import { config, isDevAuth } from './config';
+import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
 
 export type SignInResult =
   /** Session established. Route to the app. */
@@ -120,6 +121,17 @@ export async function signOut(): Promise<void> {
 export async function getSession() {
   const { data } = await supabase.auth.getSession();
   return data.session;
+}
+
+export function subscribeToSession(
+  listener: (session: Session | null, event: AuthChangeEvent) => void
+): () => void {
+  const {
+    data: { subscription },
+  } = supabase.auth.onAuthStateChange((event, session) => {
+    listener(session, event);
+  });
+  return () => subscription.unsubscribe();
 }
 
 /**

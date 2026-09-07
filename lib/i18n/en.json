@@ -1,1 +1,158 @@
-{}
+{
+  "app": {
+    "name": "SSG Auto Parts",
+    "tagline": "Trusted since 1971",
+    "taglineSecondary": "Quality Parts, Lasting Relationship"
+  },
+  "splash": {
+    "skip": "Tap to skip"
+  },
+  "language": {
+    "title": "Choose your language",
+    "english": "English",
+    "englishSubtitle": "Continue in English",
+    "urdu": "اردو",
+    "urduSubtitle": "اردو میں جاری رکھیں",
+    "continue": "Continue"
+  },
+  "rtl": {
+    "restartTitle": "Restart required",
+    "restartBody": "The app will restart to apply the layout direction.",
+    "restartAction": "Restart"
+  },
+  "auth": {
+    "welcome": "Welcome back",
+    "subtitle": "Sign in to your verified account",
+    "email": "Business email",
+    "phone": "Mobile number",
+    "password": "Password",
+    "emailPlaceholder": "name@workshop.com",
+    "phonePlaceholder": "0300 1234567",
+    "passwordPlaceholder": "••••••••",
+    "signIn": "Sign in",
+    "sendCode": "Send code",
+    "inviteOnly": "Invite-only access · request from admin",
+    "notRegistered": "This identifier is not registered with SSG. Contact SSG to request access.",
+    "badCredentials": "The email or password is incorrect.",
+    "genericError": "Sign-in failed. Please try again.",
+    "verifyTitle": "Enter verification code",
+    "verifySubtitle": "Enter the 6-digit code sent to your phone.",
+    "code": "Verification code",
+    "verify": "Verify",
+    "resend": "Resend code",
+    "resendIn": "Resend in {{seconds}}s"
+  },
+  "tabs": {
+    "home": "Home",
+    "favourites": "Favourites",
+    "requests": "Orders",
+    "cart": "Cart",
+    "profile": "Profile"
+  },
+  "common": {
+    "all": "All",
+    "cancel": "Cancel",
+    "clear": "Clear",
+    "retry": "Retry",
+    "error": "Something went wrong.",
+    "close": "Close"
+  },
+  "catalogue": {
+    "title": "Catalogue",
+    "searchPlaceholder": "Search any part of name, brand, OEM or SKU",
+    "vehicleTitle": "Filter by vehicle",
+    "anyVehicle": "Any vehicle",
+    "make": "Make",
+    "model": "Model",
+    "variant": "Variant",
+    "selectMake": "Select make",
+    "selectModel": "Select model",
+    "selectVariant": "Select variant",
+    "allModels": "All models",
+    "allVariants": "All variants",
+    "noResults": "No parts found",
+    "noResultsBody": "Try a different search, or clear the filters.",
+    "loadingMore": "Loading more…",
+    "whatsappMessage": "Hello SSG, I need help with a parts order."
+  },
+  "part": {
+    "brand": "Brand",
+    "oem": "OEM number",
+    "sku": "SKU",
+    "category": "Category",
+    "description": "Description",
+    "fitment": "Fits these vehicles",
+    "fitmentNone": "Fitment information is not available for this part.",
+    "allOfMake": "All {{make}} models",
+    "allOfModel": "All {{model}} variants",
+    "addToRequest": "Add to cart",
+    "addedToRequest": "Added to cart",
+    "favourite": "Save to favourites",
+    "contactSsg": "Contact SSG on WhatsApp",
+    "contactUnavailable": "SSG has not published a WhatsApp number yet.",
+    "notFound": "This part is no longer available.",
+    "whatsappMessage": "Hello SSG, I would like a quote for {{sku}} — {{name}}."
+  },
+  "favourites": {
+    "empty": "No favourites yet",
+    "emptyBody": "Tap the heart on any part to save it here.",
+    "browse": "Browse the catalogue"
+  },
+  "cart": {
+    "title": "Cart",
+    "empty": "Your cart is empty",
+    "emptyBody": "Add catalogue parts, then return here to submit an order.",
+    "unitPrice": "Unit price",
+    "lineTotal": "Line total",
+    "remove": "Remove",
+    "estimatedTotal": "Indicative total",
+    "indicative": "Prices are indicative only. SSG will confirm the final order by phone.",
+    "note": "Order note",
+    "notePlaceholder": "Delivery details, urgency, or anything else",
+    "submit": "Submit order",
+    "submitting": "Submitting…",
+    "successTitle": "Order submitted",
+    "successBody": "Your reference is {{reference}}. SSG will contact you to confirm the order.",
+    "viewRequests": "View my orders",
+    "continueBrowsing": "Continue browsing",
+    "submitError": "The order could not be submitted. Please try again."
+  },
+  "requests": {
+    "title": "My orders",
+    "empty": "No orders yet",
+    "emptyBody": "Submitted orders will appear here.",
+    "reference": "Reference",
+    "items": "{{count}} items",
+    "indicativeTotal": "Indicative total",
+    "detailTitle": "Order details",
+    "submitted": "Submitted {{date}}",
+    "note": "Your note",
+    "lineItems": "Ordered parts",
+    "quantity": "Qty {{count}}",
+    "notFound": "This order could not be found.",
+    "readOnly": "Submitted orders are read-only. SSG will follow up by phone."
+  },
+  "profile": {
+    "title": "Profile",
+    "verified": "Verified buyer",
+    "businessName": "Business name",
+    "contactName": "Contact name",
+    "identifier": "Account",
+    "city": "City",
+    "settings": "Settings",
+    "language": "Language",
+    "appearance": "Appearance",
+    "system": "System",
+    "light": "Light",
+    "dark": "Dark",
+    "contact": "Contact SSG",
+    "contactUnavailable": "SSG contact details are not configured yet.",
+    "adminUpload": "Import catalogue",
+    "signOut": "Sign out",
+    "missing": "Not provided"
+  },
+  "empty": {
+    "title": "Coming soon",
+    "body": "This screen is not built yet."
+  }
+}

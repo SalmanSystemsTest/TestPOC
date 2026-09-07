@@ -1,14 +1,25 @@
 import 'react-native-url-polyfill/auto';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { createClient } from '@supabase/supabase-js';
-import { AppState } from 'react-native';
+import { createClient, type SupportedStorage } from '@supabase/supabase-js';
+import { AppState, Platform } from 'react-native';
 import { config } from './config';
 import type { Database } from '../types/database';
+
+const serverStorage: SupportedStorage = {
+  getItem: async () => null,
+  setItem: async () => undefined,
+  removeItem: async () => undefined,
+};
+
+const storage =
+  Platform.OS === 'web' && typeof window === 'undefined'
+    ? serverStorage
+    : AsyncStorage;
 
 export const supabase = createClient<Database>(config.supabaseUrl, config.supabaseKey, {
   auth: {
     // Keeps the session on the device so returning users skip login entirely.
-    storage: AsyncStorage,
+    storage,
     persistSession: true,
     autoRefreshToken: true,
     // Must be false in React Native — there is no URL to parse a session from.

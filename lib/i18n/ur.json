@@ -1,1 +1,158 @@
-{}
+{
+  "app": {
+    "name": "ایس ایس جی آٹو پارٹس",
+    "tagline": "1971 سے قابلِ اعتماد",
+    "taglineSecondary": "معیاری پرزے، دیرپا تعلق"
+  },
+  "splash": {
+    "skip": "چھوڑنے کے لیے ٹیپ کریں"
+  },
+  "language": {
+    "title": "اپنی زبان منتخب کریں",
+    "english": "English",
+    "englishSubtitle": "Continue in English",
+    "urdu": "اردو",
+    "urduSubtitle": "اردو میں جاری رکھیں",
+    "continue": "جاری رکھیں"
+  },
+  "rtl": {
+    "restartTitle": "دوبارہ شروع کرنا ضروری ہے",
+    "restartBody": "لے آؤٹ کی سمت لگنے کے لیے ایپ دوبارہ شروع ہوگی۔",
+    "restartAction": "دوبارہ شروع کریں"
+  },
+  "auth": {
+    "welcome": "خوش آمدید",
+    "subtitle": "اپنے تصدیق شدہ اکاؤنٹ میں سائن ان کریں",
+    "email": "کاروباری ای میل",
+    "phone": "موبائل نمبر",
+    "password": "پاس ورڈ",
+    "emailPlaceholder": "name@workshop.com",
+    "phonePlaceholder": "0300 1234567",
+    "passwordPlaceholder": "••••••••",
+    "signIn": "سائن ان",
+    "sendCode": "کوڈ بھیجیں",
+    "inviteOnly": "صرف دعوت پر رسائی · ایڈمن سے درخواست کریں",
+    "notRegistered": "یہ شناخت ایس ایس جی کے ساتھ رجسٹرڈ نہیں۔ رسائی کے لیے ایس ایس جی سے رابطہ کریں۔",
+    "badCredentials": "ای میل یا پاس ورڈ درست نہیں۔",
+    "genericError": "سائن ان نہیں ہو سکا۔ دوبارہ کوشش کریں۔",
+    "verifyTitle": "تصدیقی کوڈ درج کریں",
+    "verifySubtitle": "اپنے فون پر بھیجا گیا 6 ہندسوں کا کوڈ درج کریں۔",
+    "code": "تصدیقی کوڈ",
+    "verify": "تصدیق کریں",
+    "resend": "کوڈ دوبارہ بھیجیں",
+    "resendIn": "{{seconds}} سیکنڈ میں دوبارہ بھیجیں"
+  },
+  "tabs": {
+    "home": "ہوم",
+    "favourites": "پسندیدہ",
+    "requests": "آرڈرز",
+    "cart": "کارٹ",
+    "profile": "پروفائل"
+  },
+  "common": {
+    "all": "تمام",
+    "cancel": "منسوخ کریں",
+    "clear": "صاف کریں",
+    "retry": "دوبارہ کوشش کریں",
+    "error": "کچھ غلط ہو گیا۔",
+    "close": "بند کریں"
+  },
+  "catalogue": {
+    "title": "کیٹلاگ",
+    "searchPlaceholder": "نام، برانڈ، او ای ایم یا ایس کے یو کا کوئی حصہ لکھیں",
+    "vehicleTitle": "گاڑی کے مطابق فلٹر",
+    "anyVehicle": "کوئی بھی گاڑی",
+    "make": "میک",
+    "model": "ماڈل",
+    "variant": "ویریئنٹ",
+    "selectMake": "میک منتخب کریں",
+    "selectModel": "ماڈل منتخب کریں",
+    "selectVariant": "ویریئنٹ منتخب کریں",
+    "allModels": "تمام ماڈلز",
+    "allVariants": "تمام ویریئنٹس",
+    "noResults": "کوئی پرزہ نہیں ملا",
+    "noResultsBody": "تلاش بدل کر دیکھیں، یا فلٹر ہٹا دیں۔",
+    "loadingMore": "مزید پرزے لوڈ ہو رہے ہیں…",
+    "whatsappMessage": "السلام علیکم ایس ایس جی، مجھے پرزوں کے آرڈر میں مدد درکار ہے۔"
+  },
+  "part": {
+    "brand": "برانڈ",
+    "oem": "او ای ایم نمبر",
+    "sku": "ایس کے یو",
+    "category": "کیٹیگری",
+    "description": "تفصیل",
+    "fitment": "ان گاڑیوں کے لیے موزوں",
+    "fitmentNone": "اس پرزے کی فٹمنٹ معلومات دستیاب نہیں۔",
+    "allOfMake": "تمام {{make}} ماڈلز",
+    "allOfModel": "تمام {{model}} ویریئنٹس",
+    "addToRequest": "کارٹ میں شامل کریں",
+    "addedToRequest": "کارٹ میں شامل ہو گیا",
+    "favourite": "پسندیدہ میں محفوظ کریں",
+    "contactSsg": "واٹس ایپ پر ایس ایس جی سے رابطہ",
+    "contactUnavailable": "ایس ایس جی نے ابھی واٹس ایپ نمبر جاری نہیں کیا۔",
+    "notFound": "یہ پرزہ اب دستیاب نہیں۔",
+    "whatsappMessage": "السلام علیکم ایس ایس جی، مجھے {{sku}} — {{name}} کی قیمت درکار ہے۔"
+  },
+  "favourites": {
+    "empty": "ابھی کوئی پسندیدہ نہیں",
+    "emptyBody": "کسی بھی پرزے پر دل کا نشان دبا کر یہاں محفوظ کریں۔",
+    "browse": "کیٹلاگ دیکھیں"
+  },
+  "cart": {
+    "title": "کارٹ",
+    "empty": "آپ کا کارٹ خالی ہے",
+    "emptyBody": "کیٹلاگ سے پرزے شامل کریں، پھر یہاں سے آرڈر بھیجیں۔",
+    "unitPrice": "فی یونٹ قیمت",
+    "lineTotal": "لائن ٹوٹل",
+    "remove": "ہٹائیں",
+    "estimatedTotal": "تخمینی ٹوٹل",
+    "indicative": "یہ قیمتیں صرف تخمینی ہیں۔ حتمی آرڈر ایس ایس جی فون پر تصدیق کرے گا۔",
+    "note": "آرڈر نوٹ",
+    "notePlaceholder": "ڈیلیوری، فوری ضرورت، یا کوئی اور ہدایت",
+    "submit": "آرڈر بھیجیں",
+    "submitting": "بھیجی جا رہی ہے…",
+    "successTitle": "آرڈر بھیج دیا گیا",
+    "successBody": "آپ کا حوالہ نمبر {{reference}} ہے۔ ایس ایس جی تصدیق کے لیے آپ سے رابطہ کرے گا۔",
+    "viewRequests": "میرے آرڈرز دیکھیں",
+    "continueBrowsing": "کیٹلاگ دیکھتے رہیں",
+    "submitError": "آرڈر نہیں بھیجا جا سکا۔ دوبارہ کوشش کریں۔"
+  },
+  "requests": {
+    "title": "میرے آرڈرز",
+    "empty": "ابھی کوئی آرڈر نہیں",
+    "emptyBody": "بھیجے گئے آرڈرز یہاں دکھائی دیں گے۔",
+    "reference": "حوالہ نمبر",
+    "items": "{{count}} پرزے",
+    "indicativeTotal": "تخمینی ٹوٹل",
+    "detailTitle": "آرڈر کی تفصیل",
+    "submitted": "{{date}} کو بھیجا گیا",
+    "note": "آپ کا نوٹ",
+    "lineItems": "آرڈر کردہ پرزے",
+    "quantity": "تعداد {{count}}",
+    "notFound": "یہ آرڈر نہیں مل سکا۔",
+    "readOnly": "بھیجا گیا آرڈر تبدیل نہیں ہو سکتا۔ ایس ایس جی فون پر فالو اپ کرے گا۔"
+  },
+  "profile": {
+    "title": "پروفائل",
+    "verified": "تصدیق شدہ خریدار",
+    "businessName": "کاروباری نام",
+    "contactName": "رابطہ شخص",
+    "identifier": "اکاؤنٹ",
+    "city": "شہر",
+    "settings": "ترتیبات",
+    "language": "زبان",
+    "appearance": "تھیم",
+    "system": "سسٹم",
+    "light": "لائٹ",
+    "dark": "ڈارک",
+    "contact": "ایس ایس جی سے رابطہ",
+    "contactUnavailable": "ایس ایس جی کی رابطہ معلومات ابھی دستیاب نہیں۔",
+    "adminUpload": "کیٹلاگ درآمد کریں",
+    "signOut": "سائن آؤٹ",
+    "missing": "درج نہیں"
+  },
+  "empty": {
+    "title": "جلد آرہا ہے",
+    "body": "یہ اسکرین ابھی تیار نہیں۔"
+  }
+}

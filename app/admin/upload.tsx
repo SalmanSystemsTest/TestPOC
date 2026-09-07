@@ -1,1 +1,5 @@
-// Admin Excel import — pick file, run import, show results.
+import { EmptyState } from '@/components/EmptyState';
+
+export default function AdminUploadScreen() {
+  return <EmptyState />;
+}
