@@ -85,7 +85,7 @@ export function PartCard({
               {part.brand}
             </AppText>
           ) : null}
-          <AppText weight="700" style={styles.price}>
+          <AppText weight="700" ltr style={styles.price}>
             {formatPkr(part.price_pkr)}
           </AppText>
         </Pressable>

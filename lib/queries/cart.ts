@@ -5,6 +5,7 @@
 // screen; what is here is what the part-detail screen needs.
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toPkrNumber } from '../format';
 import { supabase } from '../supabase';
 import type { Part } from './parts';
 
@@ -146,7 +147,13 @@ export function useSubmitQuote(userId: string | undefined) {
         p_note: note.trim() || undefined,
       });
       if (error) throw error;
-      return data;
+      if (!data) throw new Error('CART_EMPTY');
+      return {
+        id: data.id,
+        reference: data.reference,
+        item_count: Number(data.item_count) || 0,
+        total_pkr: toPkrNumber(data.total_pkr),
+      };
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['cart'] });

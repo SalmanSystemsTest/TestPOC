@@ -16,7 +16,7 @@ import { PartThumbnail } from '@/components/PartThumbnail';
 import { QtyStepper } from '@/components/QtyStepper';
 import { useAuthSession } from '@/lib/auth-context';
 import { hasWhatsapp } from '@/lib/config';
-import { formatPkr, localisedName } from '@/lib/format';
+import { formatPkr, localisedName, toPkrNumber } from '@/lib/format';
 import {
   buildOrderWhatsappMessage,
   openSsgWhatsapp,
@@ -60,14 +60,34 @@ export default function CartScreen() {
           profile: profile.data ?? null,
           language: i18n.language,
           labels: {
-            heading: t('cart.whatsappHeading', { reference: request.reference }),
+            title: t('cart.whatsappTitle'),
+            reference: t('cart.whatsappReference'),
+            shop: t('cart.whatsappShop'),
+            contact: t('cart.whatsappContact'),
+            phone: t('cart.whatsappPhone'),
+            email: t('cart.whatsappEmail'),
+            city: t('cart.whatsappCity'),
+            parts: t('cart.whatsappParts'),
+            oem: t('cart.whatsappOem'),
             itemsLabel: t('cart.whatsappItems'),
             totalLabel: t('cart.whatsappTotal'),
             noteLabel: t('cart.whatsappNote'),
+            followUp: t('cart.whatsappFollowUp'),
           },
         });
-        void dispatchQuoteNotification(request.id);
-        openSsgWhatsapp(text);
+        const notify = dispatchQuoteNotification({
+          request,
+          lines,
+          note: capturedNote,
+          profile: profile.data ?? null,
+          message: text,
+        });
+        const timeout = new Promise<void>((resolve) => {
+          setTimeout(resolve, 8000);
+        });
+        void Promise.race([notify, timeout]).then(() => {
+          openSsgWhatsapp(text);
+        });
         setWhatsappText(text);
         setNote('');
         setSubmitted(request);
@@ -78,7 +98,7 @@ export default function CartScreen() {
   const total = useMemo(
     () =>
       (cart.data ?? []).reduce(
-        (sum, line) => sum + line.part.price_pkr * line.qty,
+        (sum, line) => sum + toPkrNumber(line.part.price_pkr) * line.qty,
         0
       ),
     [cart.data]
@@ -170,7 +190,7 @@ export default function CartScreen() {
                     <AppText weight="600" numberOfLines={2}>
                       {localisedName(part, i18n.language)}
                     </AppText>
-                    <AppText variant="caption" style={styles.muted}>
+                    <AppText variant="caption" ltr style={styles.muted}>
                       {formatPkr(part.price_pkr)}
                     </AppText>
                     <View style={styles.lineActions}>
@@ -188,8 +208,8 @@ export default function CartScreen() {
                       </Pressable>
                     </View>
                   </View>
-                  <AppText variant="caption" weight="700" style={styles.linePrice}>
-                    {formatPkr(part.price_pkr * qty)}
+                  <AppText variant="caption" weight="700" ltr style={styles.linePrice}>
+                    {formatPkr(toPkrNumber(part.price_pkr) * qty)}
                   </AppText>
                 </View>
               ))}
@@ -198,7 +218,7 @@ export default function CartScreen() {
             <View style={styles.summary}>
               <View style={styles.summaryRow}>
                 <AppText weight="600">{t('cart.estimatedTotal')}</AppText>
-                <AppText weight="700" style={styles.total}>
+                <AppText weight="700" ltr style={styles.total}>
                   {formatPkr(total)}
                 </AppText>
               </View>

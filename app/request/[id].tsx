@@ -64,7 +64,7 @@ export default function RequestScreen() {
             ) : null}
             <View style={styles.summaryRow}>
               <AppText>{t('requests.indicativeTotal')}</AppText>
-              <AppText weight="700" style={styles.total}>
+              <AppText weight="700" ltr style={styles.total}>
                 {formatPkr(request.data.request.total_pkr)}
               </AppText>
             </View>
@@ -83,12 +83,12 @@ export default function RequestScreen() {
                       .filter(Boolean)
                       .join(' · ')}
                   </AppText>
-                  <AppText variant="caption" style={styles.muted}>
+                  <AppText variant="caption" ltr style={styles.muted}>
                     {t('requests.quantity', { count: item.qty })} ×{' '}
                     {formatPkr(item.price_snapshot)}
                   </AppText>
                 </View>
-                <AppText weight="700" style={styles.total}>
+                <AppText weight="700" ltr style={styles.total}>
                   {formatPkr(item.price_snapshot * item.qty)}
                 </AppText>
               </View>

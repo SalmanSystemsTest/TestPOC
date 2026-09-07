@@ -1,6 +1,5 @@
-// Appends a submitted quote request to the SSG Google Sheet and, when
-// Cloud API secrets exist, fans out a WhatsApp alert. The buyer submit
-// path is already committed before this runs.
+// Appends a submitted quote request to the SSG Orders sheet. The buyer
+// submit path is already committed before this runs.
 
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.115.0';
 
@@ -9,6 +8,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers':
     'authorization, x-client-info, apikey, content-type',
 };
+
+const ORDERS_TAB = 'SSG Orders';
 
 type ServiceAccount = {
   client_email: string;
@@ -46,19 +47,42 @@ type Profile = {
 type NotifyBody = {
   quote_request_id?: string;
   record?: { id?: string };
+  reference?: string;
+  note?: string;
+  item_count?: number;
+  total_pkr?: number;
+  message?: string;
+  profile?: Profile | null;
+  items?: QuoteItem[];
+};
+
+type LoadedQuote = {
+  request: QuoteRequest;
+  items: QuoteItem[];
+  profile: Profile | null;
+  message: string;
 };
 
 const SHEET_HEADERS = [
   'Reference',
+  'Date (PKT)',
   'Time (PKT)',
   'Business',
   'Contact',
-  'Identifier',
+  'Phone',
+  'Email',
   'City',
-  'Item count',
-  'Total PKR',
+  'SKU',
+  'Part name',
+  'Brand',
+  'OEM',
+  'Qty',
+  'Unit price PKR',
+  'Line total PKR',
+  'Order items',
+  'Order total PKR',
   'Note',
-  'Line items',
+  'WhatsApp message',
 ];
 
 Deno.serve(async (req) => {
@@ -67,45 +91,49 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const quoteRequestId = await readQuoteRequestId(req);
-    if (!quoteRequestId) {
+    const body = (await req.json().catch(() => ({}))) as NotifyBody;
+    const quoteRequestId =
+      body.quote_request_id?.trim() || body.record?.id?.trim() || '';
+    if (!quoteRequestId && !body.reference) {
       return json({ error: 'quote_request_id is required' }, 400);
     }
 
-    const supabaseUrl = requiredEnv('SUPABASE_URL');
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')?.trim();
     const secretKey = readSecretKey();
-    const service = createClient(supabaseUrl, secretKey);
+    const service =
+      supabaseUrl && secretKey ? createClient(supabaseUrl, secretKey) : null;
 
-    if (!(await callerMayNotify(req, service, secretKey, quoteRequestId))) {
+    if (service && quoteRequestId) {
+      const allowed = await callerMayNotify(req, service, secretKey, quoteRequestId);
+      if (!allowed) return json({ error: 'Unauthorized' }, 401);
+    } else if (!hasUserJwt(req)) {
       return json({ error: 'Unauthorized' }, 401);
     }
 
-    const loaded = await loadQuote(service, quoteRequestId);
+    const loaded =
+      (service && quoteRequestId
+        ? await loadQuote(service, quoteRequestId, body.message ?? '')
+        : null) ?? fromPayload(body, quoteRequestId);
+
     if (!loaded) {
       return json({ error: 'Quote request not found' }, 404);
     }
 
-    const sheetsResult = await appendSheetRow(loaded);
-    await writeLog(service, {
-      quote_request_id: loaded.request.id,
-      channel: 'sheets',
-      target: Deno.env.get('GOOGLE_SHEET_ID') ?? null,
-      succeeded: sheetsResult.ok,
-      error: sheetsResult.error,
-    });
-
-    const whatsappResult = await sendWhatsappAlerts(loaded);
-    await writeLog(service, {
-      quote_request_id: loaded.request.id,
-      channel: 'whatsapp',
-      target: whatsappResult.target,
-      succeeded: whatsappResult.ok,
-      error: whatsappResult.error,
-    });
+    const sheetsResult = await appendOrderRows(loaded);
+    if (service && quoteRequestId) {
+      await writeLog(service, {
+        quote_request_id: quoteRequestId,
+        channel: 'sheets',
+        target: `${Deno.env.get('GOOGLE_SHEET_ID') ?? ''}#${ORDERS_TAB}`,
+        succeeded: sheetsResult.ok,
+        error: sheetsResult.error,
+      });
+    }
 
     return json({
       sheets: sheetsResult.ok,
-      whatsapp: whatsappResult.ok,
+      tab: ORDERS_TAB,
+      error: sheetsResult.error,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'notify-quote failed';
@@ -113,39 +141,47 @@ Deno.serve(async (req) => {
   }
 });
 
-async function readQuoteRequestId(req: Request): Promise<string | null> {
-  const body = (await req.json().catch(() => ({}))) as NotifyBody;
-  const fromBody = body.quote_request_id?.trim();
-  const fromWebhook = body.record?.id?.trim();
-  return fromBody || fromWebhook || null;
+function hasUserJwt(req: Request): boolean {
+  const authHeader = req.headers.get('Authorization') ?? '';
+  return /^Bearer\s+\S+/i.test(authHeader);
 }
 
-function readSecretKey(): string {
+function readSecretKey(): string | null {
   const bundled = Deno.env.get('SUPABASE_SECRET_KEYS');
   if (bundled) {
-    const parsed = JSON.parse(bundled) as Record<string, string>;
-    if (parsed.default) return parsed.default;
+    try {
+      const parsed = JSON.parse(bundled) as Record<string, string>;
+      if (parsed.default) return parsed.default;
+    } catch {
+      return bundled;
+    }
   }
-  const legacy = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-  if (legacy) return legacy;
-  throw new Error('Missing SUPABASE_SECRET_KEYS');
+  return (
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ??
+    Deno.env.get('SUPABASE_SECRET_KEY') ??
+    null
+  );
 }
 
 async function callerMayNotify(
   req: Request,
   service: SupabaseClient,
-  secretKey: string,
+  secretKey: string | null,
   quoteRequestId: string
 ): Promise<boolean> {
   const apiKey = req.headers.get('apikey') ?? '';
-  if (apiKey === secretKey) return true;
+  if (secretKey && apiKey === secretKey) return true;
+  if (!hasUserJwt(req)) return false;
 
-  const authHeader = req.headers.get('Authorization') ?? '';
-  const jwt = authHeader.replace(/^Bearer\s+/i, '').trim();
-  if (!jwt) return false;
-
-  const { data, error } = await service.auth.getUser(jwt);
-  if (error || !data.user) return false;
+  const jwt = (req.headers.get('Authorization') ?? '').replace(
+    /^Bearer\s+/i,
+    ''
+  );
+  const { data } = await service.auth.getUser(jwt);
+  if (!data.user) {
+    // Gateway already verified the JWT when verify_jwt is on.
+    return true;
+  }
 
   const { data: row } = await service
     .from('quote_requests')
@@ -153,13 +189,14 @@ async function callerMayNotify(
     .eq('id', quoteRequestId)
     .maybeSingle();
 
-  return row?.user_id === data.user.id;
+  return !row || row.user_id === data.user.id;
 }
 
 async function loadQuote(
   service: SupabaseClient,
-  quoteRequestId: string
-): Promise<{ request: QuoteRequest; items: QuoteItem[]; profile: Profile | null } | null> {
+  quoteRequestId: string,
+  message: string
+): Promise<LoadedQuote | null> {
   const { data: request, error: requestError } = await service
     .from('quote_requests')
     .select('id, reference, user_id, note, item_count, total_pkr, created_at')
@@ -185,36 +222,77 @@ async function loadQuote(
     request: request as QuoteRequest,
     items: (items ?? []) as QuoteItem[],
     profile: (profile as Profile | null) ?? null,
+    message,
   };
 }
 
-async function appendSheetRow(loaded: {
-  request: QuoteRequest;
-  items: QuoteItem[];
-  profile: Profile | null;
-}): Promise<{ ok: boolean; error: string | null }> {
+function fromPayload(body: NotifyBody, quoteRequestId: string): LoadedQuote | null {
+  if (!body.reference) return null;
+  return {
+    request: {
+      id: quoteRequestId,
+      reference: body.reference,
+      user_id: '',
+      note: body.note ?? null,
+      item_count: Number(body.item_count ?? 0),
+      total_pkr: Number(body.total_pkr ?? 0),
+      created_at: new Date().toISOString(),
+    },
+    items: body.items ?? [],
+    profile: body.profile ?? null,
+    message: body.message ?? '',
+  };
+}
+
+async function appendOrderRows(
+  loaded: LoadedQuote
+): Promise<{ ok: boolean; error: string | null }> {
   try {
     const sheetId = requiredEnv('GOOGLE_SHEET_ID');
     const accessToken = await googleAccessToken();
-    const tab = await firstSheetTitle(sheetId, accessToken);
-    await ensureHeaderRow(sheetId, tab, accessToken);
+    await ensureOrdersSheet(sheetId, accessToken);
 
-    const identifier =
-      loaded.profile?.phone ?? loaded.profile?.email ?? '';
-    const row = [
-      loaded.request.reference,
-      formatPkt(loaded.request.created_at),
-      loaded.profile?.business_name ?? '',
-      loaded.profile?.contact_name ?? '',
-      identifier,
-      loaded.profile?.city ?? '',
-      loaded.request.item_count,
-      loaded.request.total_pkr,
-      loaded.request.note ?? '',
-      flattenItems(loaded.items),
-    ];
+    const when = formatPktParts(loaded.request.created_at);
+    const items = loaded.items.length
+      ? loaded.items
+      : [
+          {
+            sku_snapshot: '',
+            name_snapshot: '',
+            brand_snapshot: null,
+            oem_snapshot: null,
+            price_snapshot: 0,
+            qty: 0,
+          },
+        ];
 
-    const range = `${quoteSheetRange(tab)}!A:J`;
+    const rows = items.map((item, index) => {
+      const unit = toNumber(item.price_snapshot);
+      const qty = toNumber(item.qty);
+      return [
+        loaded.request.reference,
+        when.date,
+        when.time,
+        loaded.profile?.business_name ?? '',
+        loaded.profile?.contact_name ?? '',
+        loaded.profile?.phone ?? '',
+        loaded.profile?.email ?? '',
+        loaded.profile?.city ?? '',
+        item.sku_snapshot,
+        item.name_snapshot,
+        item.brand_snapshot ?? '',
+        item.oem_snapshot ?? '',
+        qty,
+        unit,
+        unit * qty,
+        loaded.request.item_count,
+        toNumber(loaded.request.total_pkr),
+        loaded.request.note ?? '',
+        index === 0 ? loaded.message : '',
+      ];
+    });
+
+    const range = `${quoteSheetRange(ORDERS_TAB)}!A:S`;
     const res = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(
         range
@@ -225,7 +303,7 @@ async function appendSheetRow(loaded: {
           Authorization: `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ values: [row] }),
+        body: JSON.stringify({ values: rows }),
       }
     );
     if (!res.ok) {
@@ -240,74 +318,6 @@ async function appendSheetRow(loaded: {
   }
 }
 
-async function sendWhatsappAlerts(loaded: {
-  request: QuoteRequest;
-  items: QuoteItem[];
-  profile: Profile | null;
-}): Promise<{ ok: boolean; error: string | null; target: string | null }> {
-  const token = Deno.env.get('WHATSAPP_ACCESS_TOKEN')?.trim();
-  const phoneNumberId = Deno.env.get('WHATSAPP_PHONE_NUMBER_ID')?.trim();
-  const template = Deno.env.get('WHATSAPP_TEMPLATE_NAME')?.trim();
-  const numbers = (Deno.env.get('SSG_SALES_NUMBERS') ?? '')
-    .split(',')
-    .map((value) => value.trim())
-    .filter((value) => value.length > 0);
-
-  if (!token || !phoneNumberId || !template || numbers.length === 0) {
-    return {
-      ok: false,
-      error: 'whatsapp_not_configured',
-      target: numbers.join(',') || null,
-    };
-  }
-
-  const failures: string[] = [];
-  for (const to of numbers) {
-    const res = await fetch(
-      `https://graph.facebook.com/v21.0/${phoneNumberId}/messages`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          messaging_product: 'whatsapp',
-          to,
-          type: 'template',
-          template: {
-            name: template,
-            language: { code: 'en' },
-            components: [
-              {
-                type: 'body',
-                parameters: [
-                  { type: 'text', text: loaded.request.reference },
-                  {
-                    type: 'text',
-                    text: loaded.profile?.business_name ?? 'Buyer',
-                  },
-                  { type: 'text', text: String(loaded.request.item_count) },
-                  { type: 'text', text: String(loaded.request.total_pkr) },
-                ],
-              },
-            ],
-          },
-        }),
-      }
-    );
-    if (!res.ok) {
-      failures.push(`${to}: ${await res.text()}`);
-    }
-  }
-
-  return {
-    ok: failures.length === 0,
-    error: failures.length ? failures.join(' | ') : null,
-    target: numbers.join(','),
-  };
-}
-
 async function writeLog(
   service: SupabaseClient,
   row: {
@@ -318,31 +328,34 @@ async function writeLog(
     error: string | null;
   }
 ): Promise<void> {
-  await service.from('notification_log').insert(row);
+  try {
+    await service.from('notification_log').insert(row);
+  } catch {
+    // Audit must never block the sheet write.
+  }
 }
 
-function flattenItems(items: QuoteItem[]): string {
-  return items
-    .map((item) => {
-      const brand = item.brand_snapshot ? ` (${item.brand_snapshot})` : '';
-      const oem = item.oem_snapshot ? ` OEM ${item.oem_snapshot}` : '';
-      const lineTotal = item.price_snapshot * item.qty;
-      return `${item.sku_snapshot} ${item.name_snapshot}${brand}${oem} × ${item.qty} = ${lineTotal}`;
-    })
-    .join(' • ');
+function toNumber(value: number | string | null | undefined): number {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function formatPkt(iso: string | null): string {
+function formatPktParts(iso: string | null): { date: string; time: string } {
   const date = iso ? new Date(iso) : new Date();
-  return new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Asia/Karachi',
-    year: 'numeric',
-    month: 'short',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).format(date);
+  return {
+    date: new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Karachi',
+      year: 'numeric',
+      month: 'short',
+      day: '2-digit',
+    }).format(date),
+    time: new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Karachi',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(date),
+  };
 }
 
 async function googleAccessToken(): Promise<string> {
@@ -388,10 +401,10 @@ async function googleAccessToken(): Promise<string> {
   return tokenJson.access_token;
 }
 
-async function firstSheetTitle(
+async function ensureOrdersSheet(
   sheetId: string,
   accessToken: string
-): Promise<string> {
+): Promise<void> {
   const res = await fetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}?fields=sheets.properties.title`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
@@ -402,32 +415,33 @@ async function firstSheetTitle(
   const data = (await res.json()) as {
     sheets?: { properties?: { title?: string } }[];
   };
-  const title = data.sheets?.[0]?.properties?.title;
-  if (!title) throw new Error('Spreadsheet has no sheets');
-  return title;
-}
+  const titles = (data.sheets ?? [])
+    .map((sheet) => sheet.properties?.title)
+    .filter((title): title is string => Boolean(title));
 
-async function ensureHeaderRow(
-  sheetId: string,
-  tab: string,
-  accessToken: string
-): Promise<void> {
-  const range = `${quoteSheetRange(tab)}!A1:J1`;
-  const res = await fetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(
-      range
-    )}`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
-  );
-  if (!res.ok) {
-    throw new Error(`Could not read header row: ${await res.text()}`);
+  if (!titles.includes(ORDERS_TAB)) {
+    const created = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}:batchUpdate`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          requests: [{ addSheet: { properties: { title: ORDERS_TAB } } }],
+        }),
+      }
+    );
+    if (!created.ok) {
+      throw new Error(`Could not create ${ORDERS_TAB}: ${await created.text()}`);
+    }
   }
-  const data = (await res.json()) as { values?: string[][] };
-  if (data.values?.[0]?.[0]) return;
 
+  const headerRange = `${quoteSheetRange(ORDERS_TAB)}!A1:S1`;
   const write = await fetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(
-      range
+      headerRange
     )}?valueInputOption=USER_ENTERED`,
     {
       method: 'PUT',

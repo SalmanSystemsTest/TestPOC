@@ -64,7 +64,7 @@ export default function RequestsScreen() {
               <AppText variant="caption" style={styles.muted}>
                 {t('requests.indicativeTotal')}
               </AppText>
-              <AppText weight="700" style={styles.total}>
+              <AppText weight="700" ltr style={styles.total}>
                 {formatPkr(item.total_pkr)}
               </AppText>
             </View>

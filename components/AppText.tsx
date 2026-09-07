@@ -7,17 +7,20 @@ type Variant = 'title' | 'body' | 'caption';
 type Props = TextProps & {
   variant?: Variant;
   weight?: '400' | '500' | '600' | '700';
+  /** Keep Western digits and "Rs" LTR, including in Urdu. */
+  ltr?: boolean;
 };
 
 export function AppText({
   variant = 'body',
   weight,
+  ltr = false,
   style,
   ...rest
 }: Props) {
   const { colors } = useTheme();
   const { i18n } = useTranslation();
-  const urdu = i18n.language === 'ur';
+  const urdu = i18n.language === 'ur' && !ltr;
   const styles = makeStyles(colors, urdu);
   const resolvedWeight = weight ?? (variant === 'title' ? '600' : '400');
 
@@ -40,6 +43,7 @@ export function AppText({
         variantStyle,
         urdu ? styles.urdu : weightStyle,
         urdu && variant === 'title' ? styles.urduTitle : null,
+        ltr ? styles.ltr : null,
         style,
       ]}
     />
@@ -84,6 +88,9 @@ function makeStyles(colors: ThemeColors, urdu: boolean) {
     },
     urduTitle: {
       lineHeight: 48,
+    },
+    ltr: {
+      writingDirection: 'ltr',
     },
   });
 }

@@ -5,16 +5,23 @@ function wrapLtr(value: string): string {
   return `${LTR}${value}${PDF}`;
 }
 
-export function formatPkrAmount(amount: number): string {
+export function toPkrNumber(amount: number | string | null | undefined): number {
+  const value = typeof amount === 'number' ? amount : Number(amount);
+  return Number.isFinite(value) ? value : 0;
+}
+
+export function formatPkrAmount(
+  amount: number | string | null | undefined
+): string {
   const formatted = new Intl.NumberFormat('en-PK', {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
-  }).format(amount);
+  }).format(toPkrNumber(amount));
   return `Rs ${formatted}`;
 }
 
-export function formatPkr(amount: number): string {
-  return wrapLtr(formatPkrAmount(amount));
+export function formatPkr(amount: number | string | null | undefined): string {
+  return formatPkrAmount(amount);
 }
 
 /**

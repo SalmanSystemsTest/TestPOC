@@ -140,7 +140,7 @@ export default function PartScreen() {
           {row.brand ? (
             <AppText style={styles.muted}>{row.brand}</AppText>
           ) : null}
-          <AppText weight="700" style={styles.price}>
+          <AppText weight="700" ltr style={styles.price}>
             {formatPkr(row.price_pkr)}
           </AppText>
         </View>
