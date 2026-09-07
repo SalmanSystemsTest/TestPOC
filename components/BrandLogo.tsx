@@ -1,47 +1,33 @@
-import { Image, StyleSheet, View } from 'react-native';
-import { useTheme, type ThemeColors } from '@/lib/theme';
+import { useTranslation } from 'react-i18next';
+import { Image, StyleSheet } from 'react-native';
 
 type Props = {
-  variant?: 'badge' | 'splash';
+  variant?: 'badge' | 'splash' | 'header';
 };
 
+const sizes = {
+  badge: { width: 168, height: 44 },
+  splash: { width: 260, height: 68 },
+  header: { width: 140, height: 37 },
+} as const;
+
 export function BrandLogo({ variant = 'badge' }: Props) {
-  const { colors } = useTheme();
-  const styles = makeStyles(colors);
+  const { t } = useTranslation();
 
   return (
-    <View style={variant === 'splash' ? styles.splash : styles.badge}>
-      <Image
-        source={require('@/assets/images/ssg-logo.png')}
-        resizeMode="contain"
-        style={variant === 'splash' ? styles.splashImage : styles.badgeImage}
-      />
-    </View>
+    <Image
+      accessible
+      accessibilityRole="image"
+      accessibilityLabel={t('app.name')}
+      source={require('@/assets/images/ssg-logo.png')}
+      resizeMode="contain"
+      style={[styles.image, sizes[variant]]}
+    />
   );
 }
 
-function makeStyles(colors: ThemeColors) {
-  return StyleSheet.create({
-    badge: {
-      alignSelf: 'flex-start',
-      backgroundColor: colors.primary,
-      borderRadius: 11,
-      paddingHorizontal: 14,
-      paddingVertical: 9,
-    },
-    badgeImage: {
-      width: 115,
-      height: 30,
-    },
-    splash: {
-      backgroundColor: colors.accentText,
-      borderRadius: 22,
-      paddingHorizontal: 34,
-      paddingVertical: 28,
-    },
-    splashImage: {
-      width: 191,
-      height: 50,
-    },
-  });
-}
+const styles = StyleSheet.create({
+  image: {
+    borderRadius: 6,
+  },
+});

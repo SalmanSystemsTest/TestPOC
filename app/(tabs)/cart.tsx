@@ -15,7 +15,12 @@ import { AppText } from '@/components/AppText';
 import { PartThumbnail } from '@/components/PartThumbnail';
 import { QtyStepper } from '@/components/QtyStepper';
 import { useAuthSession } from '@/lib/auth-context';
+import { hasWhatsapp } from '@/lib/config';
 import { formatPkr, localisedName } from '@/lib/format';
+import {
+  buildOrderWhatsappMessage,
+  openSsgWhatsapp,
+} from '@/lib/order-whatsapp';
 import {
   useCart,
   useRemoveCartItem,
@@ -23,6 +28,8 @@ import {
   useSubmitQuote,
   type SubmittedQuote,
 } from '@/lib/queries/cart';
+import { dispatchQuoteNotification } from '@/lib/queries/notify';
+import { useProfile } from '@/lib/queries/profile';
 import { useTheme, type ThemeColors } from '@/lib/theme';
 
 export default function CartScreen() {
@@ -36,8 +43,37 @@ export default function CartScreen() {
   const setQuantity = useSetCartQuantity(userId);
   const remove = useRemoveCartItem(userId);
   const submit = useSubmitQuote(userId);
+  const profile = useProfile(userId);
   const [note, setNote] = useState('');
   const [submitted, setSubmitted] = useState<SubmittedQuote | null>(null);
+  const [whatsappText, setWhatsappText] = useState<string | null>(null);
+
+  const handleSubmit = () => {
+    const lines = cart.data ?? [];
+    const capturedNote = note;
+    submit.mutate(note, {
+      onSuccess: (request) => {
+        const text = buildOrderWhatsappMessage({
+          request,
+          lines,
+          note: capturedNote,
+          profile: profile.data ?? null,
+          language: i18n.language,
+          labels: {
+            heading: t('cart.whatsappHeading', { reference: request.reference }),
+            itemsLabel: t('cart.whatsappItems'),
+            totalLabel: t('cart.whatsappTotal'),
+            noteLabel: t('cart.whatsappNote'),
+          },
+        });
+        void dispatchQuoteNotification(request.id);
+        openSsgWhatsapp(text);
+        setWhatsappText(text);
+        setNote('');
+        setSubmitted(request);
+      },
+    });
+  };
 
   const total = useMemo(
     () =>
@@ -61,6 +97,16 @@ export default function CartScreen() {
           <AppText style={[styles.muted, styles.centerText]}>
             {t('cart.successBody', { reference: submitted.reference })}
           </AppText>
+          {hasWhatsapp && whatsappText ? (
+            <Pressable
+              style={styles.secondaryButton}
+              onPress={() => openSsgWhatsapp(whatsappText)}
+            >
+              <AppText weight="600" style={styles.secondaryText}>
+                {t('cart.whatsappSend')}
+              </AppText>
+            </Pressable>
+          ) : null}
           <Pressable
             style={styles.primaryButton}
             onPress={() => router.replace('/(tabs)/requests')}
@@ -184,14 +230,7 @@ export default function CartScreen() {
             <Pressable
               disabled={submit.isPending}
               style={[styles.primaryButton, submit.isPending && styles.disabled]}
-              onPress={() =>
-                submit.mutate(note, {
-                  onSuccess: (request) => {
-                    setNote('');
-                    setSubmitted(request);
-                  },
-                })
-              }
+              onPress={handleSubmit}
             >
               <AppText weight="600" style={styles.primaryText}>
                 {submit.isPending ? t('cart.submitting') : t('cart.submit')}

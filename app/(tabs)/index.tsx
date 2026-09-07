@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppText } from '@/components/AppText';
+import { BrandLogo } from '@/components/BrandLogo';
 import { CategoryChips } from '@/components/CategoryChips';
 import { PartCard } from '@/components/PartCard';
 import { SearchBar } from '@/components/SearchBar';
@@ -137,9 +138,7 @@ export default function HomeScreen() {
         ListHeaderComponent={
           <View style={styles.header}>
             <View style={styles.titleRow}>
-              <AppText variant="title" weight="700" style={styles.title}>
-                {t('catalogue.title')}
-              </AppText>
+              <BrandLogo variant="header" />
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={t('part.contactSsg')}
@@ -226,9 +225,6 @@ function makeStyles(colors: ThemeColors) {
       alignItems: 'center',
       justifyContent: 'space-between',
       gap: 12,
-    },
-    title: {
-      flex: 1,
     },
     whatsapp: {
       width: 40,

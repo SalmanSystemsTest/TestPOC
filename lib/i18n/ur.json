@@ -115,7 +115,12 @@
     "successBody": "آپ کا حوالہ نمبر {{reference}} ہے۔ ایس ایس جی تصدیق کے لیے آپ سے رابطہ کرے گا۔",
     "viewRequests": "میرے آرڈرز دیکھیں",
     "continueBrowsing": "کیٹلاگ دیکھتے رہیں",
-    "submitError": "آرڈر نہیں بھیجا جا سکا۔ دوبارہ کوشش کریں۔"
+    "submitError": "آرڈر نہیں بھیجا جا سکا۔ دوبارہ کوشش کریں۔",
+    "whatsappHeading": "ایس ایس جی آرڈر {{reference}}",
+    "whatsappItems": "آئٹمز",
+    "whatsappTotal": "تخمینی ٹوٹل",
+    "whatsappNote": "نوٹ",
+    "whatsappSend": "واٹس ایپ پر آرڈر بھیجیں"
   },
   "requests": {
     "title": "میرے آرڈرز",

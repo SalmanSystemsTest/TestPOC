@@ -5,12 +5,16 @@ function wrapLtr(value: string): string {
   return `${LTR}${value}${PDF}`;
 }
 
-export function formatPkr(amount: number): string {
+export function formatPkrAmount(amount: number): string {
   const formatted = new Intl.NumberFormat('en-PK', {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   }).format(amount);
-  return wrapLtr(`Rs ${formatted}`);
+  return `Rs ${formatted}`;
+}
+
+export function formatPkr(amount: number): string {
+  return wrapLtr(formatPkrAmount(amount));
 }
 
 /**

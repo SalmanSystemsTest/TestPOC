@@ -115,7 +115,12 @@
     "successBody": "Your reference is {{reference}}. SSG will contact you to confirm the order.",
     "viewRequests": "View my orders",
     "continueBrowsing": "Continue browsing",
-    "submitError": "The order could not be submitted. Please try again."
+    "submitError": "The order could not be submitted. Please try again.",
+    "whatsappHeading": "SSG order {{reference}}",
+    "whatsappItems": "Items",
+    "whatsappTotal": "Indicative total",
+    "whatsappNote": "Note",
+    "whatsappSend": "Send order on WhatsApp"
   },
   "requests": {
     "title": "My orders",
