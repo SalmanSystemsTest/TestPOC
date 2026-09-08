@@ -3,18 +3,25 @@ import { Redirect, Tabs, type Href } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet } from 'react-native';
 import { useAuthSession } from '@/lib/auth-context';
+import { isProfileComplete } from '@/lib/profile-complete';
 import { useCartItemCount } from '@/lib/queries/cart';
+import { useProfile } from '@/lib/queries/profile';
 import { useTheme, type ThemeColors } from '@/lib/theme';
 
 export default function TabsLayout() {
   const { t } = useTranslation();
   const { colors } = useTheme();
   const { ready, session } = useAuthSession();
+  const profile = useProfile(session?.user.id);
   const cartCount = useCartItemCount(session?.user.id);
   const styles = makeStyles(colors);
 
   if (!ready) return null;
   if (!session) return <Redirect href={'/(auth)/sign-in' as Href} />;
+  if (profile.isPending) return null;
+  if (!isProfileComplete(profile.data)) {
+    return <Redirect href={'/(auth)/complete-profile' as Href} />;
+  }
 
   return (
     <Tabs

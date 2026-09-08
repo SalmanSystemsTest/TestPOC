@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { type Href, useRouter } from 'expo-router';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -106,6 +106,11 @@ export default function ProfileScreen() {
                 value={profile.data.city ?? t('profile.missing')}
                 colors={colors}
               />
+              <InfoRow
+                label={t('profile.address')}
+                value={profile.data.address ?? t('profile.missing')}
+                colors={colors}
+              />
             </View>
 
             <AppText variant="caption" weight="600" style={styles.sectionLabel}>
@@ -161,6 +166,20 @@ export default function ProfileScreen() {
               />
               {profile.data.role === 'admin' ? (
                 <>
+                  <View style={styles.separator} />
+                  <ActionRow
+                    icon="shield-outline"
+                    label={t('profile.adminHome')}
+                    onPress={() => router.push('/admin' as Href)}
+                    colors={colors}
+                  />
+                  <View style={styles.separator} />
+                  <ActionRow
+                    icon="people-outline"
+                    label={t('profile.adminBuyers')}
+                    onPress={() => router.push('/admin/users')}
+                    colors={colors}
+                  />
                   <View style={styles.separator} />
                   <ActionRow
                     icon="cloud-upload-outline"

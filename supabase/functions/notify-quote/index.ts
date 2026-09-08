@@ -42,6 +42,7 @@ type Profile = {
   phone: string | null;
   email: string | null;
   city: string | null;
+  address: string | null;
 };
 
 type NotifyBody = {
@@ -120,6 +121,7 @@ Deno.serve(async (req) => {
     }
 
     const sheetsResult = await appendOrderRows(loaded);
+    const emailResult = await sendOrderEmail(loaded);
     if (service && quoteRequestId) {
       await writeLog(service, {
         quote_request_id: quoteRequestId,
@@ -128,12 +130,20 @@ Deno.serve(async (req) => {
         succeeded: sheetsResult.ok,
         error: sheetsResult.error,
       });
+      await writeLog(service, {
+        quote_request_id: quoteRequestId,
+        channel: 'email',
+        target: Deno.env.get('RESEND_TO_EMAIL') ?? null,
+        succeeded: emailResult.ok,
+        error: emailResult.error,
+      });
     }
 
     return json({
       sheets: sheetsResult.ok,
+      email: emailResult.ok,
       tab: ORDERS_TAB,
-      error: sheetsResult.error,
+      error: sheetsResult.error ?? emailResult.error,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'notify-quote failed';
@@ -214,7 +224,7 @@ async function loadQuote(
 
   const { data: profile } = await service
     .from('profiles')
-    .select('business_name, contact_name, phone, email, city')
+    .select('business_name, contact_name, phone, email, city, address')
     .eq('id', request.user_id)
     .maybeSingle();
 
@@ -333,6 +343,138 @@ async function writeLog(
   } catch {
     // Audit must never block the sheet write.
   }
+}
+
+async function sendOrderEmail(
+  loaded: LoadedQuote
+): Promise<{ ok: boolean; error: string | null }> {
+  try {
+    const apiKey = requiredEnv('RESEND_API_KEY');
+    const to = requiredEnv('RESEND_TO_EMAIL');
+    const from =
+      Deno.env.get('RESEND_FROM')?.trim() ||
+      'SSG Auto Parts <onboarding@resend.dev>';
+    const pdf = await buildOrderPdf(loaded);
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from,
+        to: [to],
+        subject: `SSG order ${loaded.request.reference}`,
+        html: orderEmailHtml(loaded),
+        attachments: [
+          {
+            filename: `${loaded.request.reference}.pdf`,
+            content: pdf,
+          },
+        ],
+      }),
+    });
+    if (!res.ok) {
+      return { ok: false, error: await res.text() };
+    }
+    return { ok: true, error: null };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : 'email_failed',
+    };
+  }
+}
+
+function orderEmailHtml(loaded: LoadedQuote): string {
+  const lines = loaded.items
+    .map((item) => {
+      const unit = toNumber(item.price_snapshot);
+      const qty = toNumber(item.qty);
+      return `<tr>
+        <td>${escapeHtml(item.sku_snapshot)}</td>
+        <td>${escapeHtml(item.name_snapshot)}</td>
+        <td>${escapeHtml(item.brand_snapshot ?? '')}</td>
+        <td>${qty}</td>
+        <td>${unit}</td>
+        <td>${unit * qty}</td>
+      </tr>`;
+    })
+    .join('');
+  return `<h2>SSG Auto Parts — new order</h2>
+<p><strong>Reference:</strong> ${escapeHtml(loaded.request.reference)}</p>
+<p>
+${escapeHtml(loaded.profile?.business_name ?? '')}<br/>
+${escapeHtml(loaded.profile?.contact_name ?? '')}<br/>
+${escapeHtml(loaded.profile?.phone ?? loaded.profile?.email ?? '')}<br/>
+${escapeHtml(loaded.profile?.address ?? '')}<br/>
+${escapeHtml(loaded.profile?.city ?? '')}
+</p>
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>SKU</th><th>Part</th><th>Brand</th><th>Qty</th><th>Unit</th><th>Line</th></tr>
+${lines}
+</table>
+<p><strong>Items:</strong> ${loaded.request.item_count}<br/>
+<strong>Indicative total PKR:</strong> ${toNumber(loaded.request.total_pkr)}</p>
+<p>${escapeHtml(loaded.request.note ?? '')}</p>
+<p>Prices are indicative. Confirm the final order by phone.</p>`;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;');
+}
+
+async function buildOrderPdf(loaded: LoadedQuote): Promise<string> {
+  const { PDFDocument, StandardFonts, rgb } = await import(
+    'https://esm.sh/pdf-lib@1.17.1'
+  );
+  const doc = await PDFDocument.create();
+  let page = doc.addPage([595, 842]);
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  let y = 800;
+  const write = (text: string, size = 11, heavy = false) => {
+    if (y < 56) {
+      page = doc.addPage([595, 842]);
+      y = 800;
+    }
+    page.drawText(text.slice(0, 90), {
+      x: 48,
+      y,
+      size,
+      font: heavy ? bold : font,
+      color: rgb(0.1, 0.12, 0.18),
+    });
+    y -= size + 8;
+  };
+
+  write('SSG Auto Parts', 18, true);
+  write('Order / quote (indicative)', 11);
+  y -= 8;
+  write(`Reference: ${loaded.request.reference}`, 12, true);
+  write(`Shop: ${loaded.profile?.business_name ?? '-'}`);
+  write(`Contact: ${loaded.profile?.contact_name ?? '-'}`);
+  write(`Phone: ${loaded.profile?.phone ?? loaded.profile?.email ?? '-'}`);
+  write(`Address: ${loaded.profile?.address ?? '-'}`);
+  write(`City: ${loaded.profile?.city ?? '-'}`);
+  y -= 8;
+  write('Parts', 13, true);
+  for (const item of loaded.items) {
+    const unit = toNumber(item.price_snapshot);
+    const qty = toNumber(item.qty);
+    write(
+      `${item.sku_snapshot}  ${item.name_snapshot}  x${qty}  @ ${unit}  = ${unit * qty}`
+    );
+  }
+  y -= 8;
+  write(`Items: ${loaded.request.item_count}`, 12, true);
+  write(`Indicative total PKR: ${toNumber(loaded.request.total_pkr)}`, 12, true);
+  if (loaded.request.note) write(`Note: ${loaded.request.note}`);
+  write('SSG will confirm the final order by phone.');
+  return doc.saveAsBase64();
 }
 
 function toNumber(value: number | string | null | undefined): number {

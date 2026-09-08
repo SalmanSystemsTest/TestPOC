@@ -12,6 +12,7 @@ export type OrderWhatsappLabels = {
   phone: string;
   email: string;
   city: string;
+  address: string;
   parts: string;
   oem: string;
   itemsLabel: string;
@@ -43,6 +44,7 @@ export function buildOrderWhatsappMessage(params: {
   }
   if (profile?.phone) shopLines.push(`${labels.phone}: ${profile.phone}`);
   if (profile?.email) shopLines.push(`${labels.email}: ${profile.email}`);
+  if (profile?.address) shopLines.push(`${labels.address}: ${profile.address}`);
   if (profile?.city) shopLines.push(`${labels.city}: ${profile.city}`);
   if (shopLines.length) blocks.push('', ...shopLines);
 

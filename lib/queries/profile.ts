@@ -23,6 +23,31 @@ export function useProfile(userId: string | undefined) {
   });
 }
 
+export function useCompleteProfile(userId: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (params: {
+      businessName: string;
+      city: string;
+      address: string;
+    }) => {
+      if (!userId) throw new Error('Not signed in');
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          business_name: params.businessName.trim(),
+          city: params.city.trim(),
+          address: params.address.trim(),
+        })
+        .eq('id', userId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['profile', userId] });
+    },
+  });
+}
+
 export function useUpdateProfileLanguage(userId: string | undefined) {
   const queryClient = useQueryClient();
   return useMutation({

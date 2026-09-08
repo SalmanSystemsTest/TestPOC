@@ -33,6 +33,7 @@ export async function dispatchQuoteNotification(
               phone: payload.profile.phone,
               email: payload.profile.email,
               city: payload.profile.city,
+              address: payload.profile.address,
             }
           : null,
         items: payload.lines.map((line) => ({

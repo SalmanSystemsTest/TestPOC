@@ -15,12 +15,8 @@ import { AppText } from '@/components/AppText';
 import { PartThumbnail } from '@/components/PartThumbnail';
 import { QtyStepper } from '@/components/QtyStepper';
 import { useAuthSession } from '@/lib/auth-context';
-import { hasWhatsapp } from '@/lib/config';
 import { formatPkr, localisedName, toPkrNumber } from '@/lib/format';
-import {
-  buildOrderWhatsappMessage,
-  openSsgWhatsapp,
-} from '@/lib/order-whatsapp';
+import { buildOrderWhatsappMessage } from '@/lib/order-whatsapp';
 import {
   useCart,
   useRemoveCartItem,
@@ -46,7 +42,6 @@ export default function CartScreen() {
   const profile = useProfile(userId);
   const [note, setNote] = useState('');
   const [submitted, setSubmitted] = useState<SubmittedQuote | null>(null);
-  const [whatsappText, setWhatsappText] = useState<string | null>(null);
 
   const handleSubmit = () => {
     const lines = cart.data ?? [];
@@ -67,6 +62,7 @@ export default function CartScreen() {
             phone: t('cart.whatsappPhone'),
             email: t('cart.whatsappEmail'),
             city: t('cart.whatsappCity'),
+            address: t('cart.whatsappAddress'),
             parts: t('cart.whatsappParts'),
             oem: t('cart.whatsappOem'),
             itemsLabel: t('cart.whatsappItems'),
@@ -75,20 +71,13 @@ export default function CartScreen() {
             followUp: t('cart.whatsappFollowUp'),
           },
         });
-        const notify = dispatchQuoteNotification({
+        void dispatchQuoteNotification({
           request,
           lines,
           note: capturedNote,
           profile: profile.data ?? null,
           message: text,
         });
-        const timeout = new Promise<void>((resolve) => {
-          setTimeout(resolve, 8000);
-        });
-        void Promise.race([notify, timeout]).then(() => {
-          openSsgWhatsapp(text);
-        });
-        setWhatsappText(text);
         setNote('');
         setSubmitted(request);
       },
@@ -117,16 +106,6 @@ export default function CartScreen() {
           <AppText style={[styles.muted, styles.centerText]}>
             {t('cart.successBody', { reference: submitted.reference })}
           </AppText>
-          {hasWhatsapp && whatsappText ? (
-            <Pressable
-              style={styles.secondaryButton}
-              onPress={() => openSsgWhatsapp(whatsappText)}
-            >
-              <AppText weight="600" style={styles.secondaryText}>
-                {t('cart.whatsappSend')}
-              </AppText>
-            </Pressable>
-          ) : null}
           <Pressable
             style={styles.primaryButton}
             onPress={() => router.replace('/(tabs)/requests')}
