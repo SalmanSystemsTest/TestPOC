@@ -17,7 +17,7 @@ import { useAuthSession } from '@/lib/auth-context';
 import { config, hasWhatsapp } from '@/lib/config';
 import { categoryArt } from '@/lib/category-art';
 import { formatPkr, localisedName } from '@/lib/format';
-import { useAddToCart } from '@/lib/queries/cart';
+import { useAddToCart, useCart } from '@/lib/queries/cart';
 import { useFavouriteIds, useToggleFavourite } from '@/lib/queries/favourites';
 import { usePart, usePartFitments, type FitmentRule } from '@/lib/queries/parts';
 import { useCategories } from '@/lib/queries/vehicles';
@@ -39,9 +39,13 @@ export default function PartScreen() {
   const favourites = useFavouriteIds(userId);
   const toggleFavourite = useToggleFavourite(userId);
   const addToCart = useAddToCart(userId);
+  const cart = useCart(userId);
 
   const [imageFailed, setImageFailed] = useState(false);
-  const [added, setAdded] = useState(false);
+  const added = useMemo(
+    () => (cart.data ?? []).some((line) => line.part.id === id),
+    [cart.data, id]
+  );
 
   const isFavourite = useMemo(
     () => new Set(favourites.data ?? []).has(id ?? ''),
@@ -203,12 +207,7 @@ export default function PartScreen() {
             style={styles.primaryButton}
             accessibilityRole="button"
             disabled={addToCart.isPending}
-            onPress={() => {
-              addToCart.mutate(
-                { partId: row.id },
-                { onSuccess: () => setAdded(true) }
-              );
-            }}
+            onPress={() => addToCart.mutate({ partId: row.id })}
           >
             <AppText weight="600" style={styles.primaryButtonText}>
               {added ? t('part.addedToRequest') : t('part.addToRequest')}

@@ -6,8 +6,28 @@ function wrapLtr(value: string): string {
 }
 
 export function toPkrNumber(amount: number | string | null | undefined): number {
-  const value = typeof amount === 'number' ? amount : Number(amount);
-  return Number.isFinite(value) ? value : 0;
+  if (typeof amount === 'number') {
+    return Number.isFinite(amount) ? amount : 0;
+  }
+  if (typeof amount !== 'string') return 0;
+  const parsed = Number(amount.replace(/,/g, '').trim());
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+export function lineTotalPkr(
+  unit: number | string | null | undefined,
+  qty: number | string | null | undefined
+): number {
+  return toPkrNumber(unit) * toPkrNumber(qty);
+}
+
+export function sumLineTotalsPkr(
+  lines: readonly {
+    price: number | string | null | undefined;
+    qty: number | string | null | undefined;
+  }[]
+): number {
+  return lines.reduce((sum, line) => sum + lineTotalPkr(line.price, line.qty), 0);
 }
 
 export function formatPkrAmount(

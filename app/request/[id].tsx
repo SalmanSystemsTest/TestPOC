@@ -11,7 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppText } from '@/components/AppText';
 import { useAuthSession } from '@/lib/auth-context';
-import { formatDate, formatPkr } from '@/lib/format';
+import { formatDate, formatPkr, lineTotalPkr } from '@/lib/format';
 import { useRequest } from '@/lib/queries/requests';
 import { useTheme, type ThemeColors } from '@/lib/theme';
 
@@ -89,7 +89,7 @@ export default function RequestScreen() {
                   </AppText>
                 </View>
                 <AppText weight="700" ltr style={styles.total}>
-                  {formatPkr(item.price_snapshot * item.qty)}
+                    {formatPkr(lineTotalPkr(item.price_snapshot, item.qty))}
                 </AppText>
               </View>
             ))}

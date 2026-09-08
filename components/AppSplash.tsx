@@ -42,12 +42,12 @@ export function AppSplash({ onFinish }: Props) {
       }),
       Animated.timing(progress, {
         toValue: 1,
-        duration: 3000,
+        duration: 700,
         useNativeDriver: false,
       }),
     ]).start();
 
-    const timer = setTimeout(onFinish, 3000);
+    const timer = setTimeout(onFinish, 700);
     return () => clearTimeout(timer);
   }, [logoOpacity, logoScale, onFinish, progress, tagOpacity]);
 

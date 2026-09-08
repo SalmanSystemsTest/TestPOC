@@ -5,7 +5,7 @@ import {
   Inter_600SemiBold,
   Inter_700Bold,
 } from '@expo-google-fonts/inter';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { Stack } from 'expo-router';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
@@ -13,6 +13,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useState } from 'react';
 import { AppSplash } from '@/components/AppSplash';
 import { AuthProvider, useAuthSession } from '@/lib/auth-context';
+import { prefetchCatalogue } from '@/lib/queries/parts';
 import { LanguageProvider, useLanguage } from '@/lib/i18n';
 import { ThemeProvider, useTheme } from '@/lib/theme';
 
@@ -43,8 +44,9 @@ export default function RootLayout() {
 
 function RootShell() {
   const { ready } = useLanguage();
-  const { ready: authReady } = useAuthSession();
+  const { ready: authReady, session } = useAuthSession();
   const { resolved } = useTheme();
+  const queryClient = useQueryClient();
   const [showSplash, setShowSplash] = useState(true);
   const [fontsLoaded, fontError] = useFonts({
     NotoNastaliqUrdu_400Regular,
@@ -63,6 +65,11 @@ function RootShell() {
       void SplashScreen.hideAsync();
     }
   }, [authReady, ready, fontsSettled]);
+
+  useEffect(() => {
+    if (!session) return;
+    void prefetchCatalogue(queryClient);
+  }, [queryClient, session]);
 
   const finishSplash = useCallback(() => {
     setShowSplash(false);

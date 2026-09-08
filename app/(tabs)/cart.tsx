@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
@@ -15,7 +15,7 @@ import { AppText } from '@/components/AppText';
 import { PartThumbnail } from '@/components/PartThumbnail';
 import { QtyStepper } from '@/components/QtyStepper';
 import { useAuthSession } from '@/lib/auth-context';
-import { formatPkr, localisedName, toPkrNumber } from '@/lib/format';
+import { formatPkr, lineTotalPkr, localisedName, sumLineTotalsPkr } from '@/lib/format';
 import { buildOrderWhatsappMessage } from '@/lib/order-whatsapp';
 import {
   useCart,
@@ -42,6 +42,14 @@ export default function CartScreen() {
   const profile = useProfile(userId);
   const [note, setNote] = useState('');
   const [submitted, setSubmitted] = useState<SubmittedQuote | null>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      return () => setSubmitted(null);
+    }, [])
+  );
+
+  const dismissSuccess = () => setSubmitted(null);
 
   const handleSubmit = () => {
     const lines = cart.data ?? [];
@@ -86,9 +94,11 @@ export default function CartScreen() {
 
   const total = useMemo(
     () =>
-      (cart.data ?? []).reduce(
-        (sum, line) => sum + toPkrNumber(line.part.price_pkr) * line.qty,
-        0
+      sumLineTotalsPkr(
+        (cart.data ?? []).map((line) => ({
+          price: line.part.price_pkr,
+          qty: line.qty,
+        }))
       ),
     [cart.data]
   );
@@ -108,7 +118,10 @@ export default function CartScreen() {
           </AppText>
           <Pressable
             style={styles.primaryButton}
-            onPress={() => router.replace('/(tabs)/requests')}
+            onPress={() => {
+              dismissSuccess();
+              router.replace('/(tabs)/requests');
+            }}
           >
             <AppText weight="600" style={styles.primaryText}>
               {t('cart.viewRequests')}
@@ -116,7 +129,10 @@ export default function CartScreen() {
           </Pressable>
           <Pressable
             style={styles.secondaryButton}
-            onPress={() => router.replace('/(tabs)')}
+            onPress={() => {
+              dismissSuccess();
+              router.replace('/(tabs)');
+            }}
           >
             <AppText weight="600" style={styles.secondaryText}>
               {t('cart.continueBrowsing')}
@@ -188,7 +204,7 @@ export default function CartScreen() {
                     </View>
                   </View>
                   <AppText variant="caption" weight="700" ltr style={styles.linePrice}>
-                    {formatPkr(toPkrNumber(part.price_pkr) * qty)}
+                    {formatPkr(lineTotalPkr(part.price_pkr, qty))}
                   </AppText>
                 </View>
               ))}

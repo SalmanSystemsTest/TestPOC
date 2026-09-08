@@ -1,6 +1,11 @@
 // Server-side queries for parts search and part detail.
 
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import {
+  useInfiniteQuery,
+  useQuery,
+  type QueryClient,
+} from '@tanstack/react-query';
+import { toPkrNumber } from '../format';
 import { supabase } from '../supabase';
 import type { Tables } from '../../types/database';
 
@@ -48,7 +53,19 @@ async function fetchPartsPage(
     p_offset: offset,
   });
   if (error) throw error;
-  return data ?? [];
+  return (data ?? []).map((part) => ({
+    ...part,
+    price_pkr: toPkrNumber(part.price_pkr),
+  }));
+}
+
+export function prefetchCatalogue(queryClient: QueryClient): Promise<void> {
+  return queryClient.prefetchInfiniteQuery({
+    queryKey: ['parts', 'search', emptyFilters],
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) => fetchPartsPage(emptyFilters, pageParam),
+    staleTime: 2 * 60 * 1000,
+  });
 }
 
 export function usePartsSearch(filters: PartFilters) {
@@ -58,6 +75,7 @@ export function usePartsSearch(filters: PartFilters) {
     queryFn: ({ pageParam }) => fetchPartsPage(filters, pageParam),
     getNextPageParam: (lastPage: Part[], allPages: Part[][]) =>
       lastPage.length < PAGE_SIZE ? undefined : allPages.length * PAGE_SIZE,
+    staleTime: 2 * 60 * 1000,
   });
 }
 

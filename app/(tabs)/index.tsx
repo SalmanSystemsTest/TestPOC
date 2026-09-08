@@ -23,7 +23,7 @@ import {
 } from '@/components/VehicleSelector';
 import { useAuthSession } from '@/lib/auth-context';
 import { config, hasWhatsapp } from '@/lib/config';
-import { useAddToCart } from '@/lib/queries/cart';
+import { useAddToCart, useCart } from '@/lib/queries/cart';
 import { useFavouriteIds, useToggleFavourite } from '@/lib/queries/favourites';
 import { usePartsSearch, type Part } from '@/lib/queries/parts';
 import { useCategories } from '@/lib/queries/vehicles';
@@ -71,11 +71,11 @@ export default function HomeScreen() {
   const favourites = useFavouriteIds(userId);
   const toggleFavourite = useToggleFavourite(userId);
   const addToCart = useAddToCart(userId);
-  const [addedIds, setAddedIds] = useState<string[]>([]);
-
-  useEffect(() => {
-    setAddedIds([]);
-  }, [userId]);
+  const cart = useCart(userId);
+  const addedIds = useMemo(
+    () => new Set((cart.data ?? []).map((line) => line.part.id)),
+    [cart.data]
+  );
 
   const favouriteIds = useMemo(
     () => new Set(favourites.data ?? []),
@@ -109,13 +109,8 @@ export default function HomeScreen() {
           isFavourite: favouriteIds.has(item.id),
         })
       }
-      addedToCart={addedIds.includes(item.id)}
-      onAddToCart={() =>
-        addToCart.mutate(
-          { partId: item.id },
-          { onSuccess: () => setAddedIds((ids) => [...ids, item.id]) }
-        )
-      }
+      addedToCart={addedIds.has(item.id)}
+      onAddToCart={() => addToCart.mutate({ partId: item.id })}
     />
   );
 

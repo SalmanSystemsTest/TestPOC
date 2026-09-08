@@ -112,7 +112,7 @@
     "submit": "Submit order",
     "submitting": "Submitting…",
     "successTitle": "Order submitted",
-    "successBody": "Your reference is {{reference}}. A formatted order has been emailed to SSG.",
+    "successBody": "Your reference is {{reference}}. Order submitted — SSG will contact you.",
     "viewRequests": "View my orders",
     "continueBrowsing": "Continue browsing",
     "submitError": "The order could not be submitted. Please try again.",

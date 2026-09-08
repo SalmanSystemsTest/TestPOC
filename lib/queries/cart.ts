@@ -9,6 +9,22 @@ import { toPkrNumber } from '../format';
 import { supabase } from '../supabase';
 import type { Part } from './parts';
 
+type CartPartEmbed = Part & {
+  categories?: { icon?: string | null; slug?: string | null } | null;
+};
+
+function unwrapCartPart(
+  value: CartPartEmbed | CartPartEmbed[] | null | undefined
+): { part: Part; categoryIcon: string | null } | null {
+  const row = Array.isArray(value) ? value[0] : value;
+  if (!row || typeof row !== 'object') return null;
+  const { categories, ...part } = row;
+  return {
+    part: { ...part, price_pkr: toPkrNumber(part.price_pkr) },
+    categoryIcon: categories?.icon ?? categories?.slug ?? null,
+  };
+}
+
 export type CartLine = {
   part: Part;
   qty: number;
@@ -35,13 +51,13 @@ export function useCart(userId: string | undefined) {
         .order('updated_at', { ascending: false });
       if (error) throw error;
       return data.flatMap((row) => {
-        if (!row.parts) return [];
-        const { categories, ...part } = row.parts;
+        const embedded = unwrapCartPart(row.parts);
+        if (!embedded) return [];
         return [
           {
-            part,
-            qty: row.qty,
-            categoryIcon: categories?.icon ?? categories?.slug ?? null,
+            part: embedded.part,
+            qty: toPkrNumber(row.qty) || 1,
+            categoryIcon: embedded.categoryIcon,
           },
         ];
       });
@@ -151,7 +167,7 @@ export function useSubmitQuote(userId: string | undefined) {
       return {
         id: data.id,
         reference: data.reference,
-        item_count: Number(data.item_count) || 0,
+        item_count: toPkrNumber(data.item_count),
         total_pkr: toPkrNumber(data.total_pkr),
       };
     },

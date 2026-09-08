@@ -1,10 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useQueryClient } from '@tanstack/react-query';
 import { Redirect, Tabs, type Href } from 'expo-router';
+import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet } from 'react-native';
 import { useAuthSession } from '@/lib/auth-context';
 import { isProfileComplete } from '@/lib/profile-complete';
 import { useCartItemCount } from '@/lib/queries/cart';
+import { prefetchCatalogue } from '@/lib/queries/parts';
 import { useProfile } from '@/lib/queries/profile';
 import { useTheme, type ThemeColors } from '@/lib/theme';
 
@@ -14,7 +17,13 @@ export default function TabsLayout() {
   const { ready, session } = useAuthSession();
   const profile = useProfile(session?.user.id);
   const cartCount = useCartItemCount(session?.user.id);
+  const queryClient = useQueryClient();
   const styles = makeStyles(colors);
+
+  useEffect(() => {
+    if (!session || !isProfileComplete(profile.data)) return;
+    void prefetchCatalogue(queryClient);
+  }, [queryClient, session, profile.data]);
 
   if (!ready) return null;
   if (!session) return <Redirect href={'/(auth)/sign-in' as Href} />;
