@@ -63,6 +63,9 @@ export default function RequestScreen() {
               </AppText>
             ) : null}
             <View style={styles.summaryRow}>
+              <AppText>{t('requests.items', { count: request.data.request.item_count })}</AppText>
+            </View>
+            <View style={styles.summaryRow}>
               <AppText>{t('requests.indicativeTotal')}</AppText>
               <AppText weight="700" ltr style={styles.total}>
                 {formatPkr(request.data.request.total_pkr)}

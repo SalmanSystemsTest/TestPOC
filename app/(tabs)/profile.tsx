@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppText } from '@/components/AppText';
 import { useAuthSession } from '@/lib/auth-context';
 import { signOut } from '@/lib/auth';
+import { APP_VERSION } from '@/lib/app-version';
 import { config, hasWhatsapp } from '@/lib/config';
 import { useLanguage, type LanguageCode } from '@/lib/i18n';
 import {
@@ -173,20 +174,6 @@ export default function ProfileScreen() {
                     onPress={() => router.push('/admin' as Href)}
                     colors={colors}
                   />
-                  <View style={styles.separator} />
-                  <ActionRow
-                    icon="people-outline"
-                    label={t('profile.adminBuyers')}
-                    onPress={() => router.push('/admin/users')}
-                    colors={colors}
-                  />
-                  <View style={styles.separator} />
-                  <ActionRow
-                    icon="cloud-upload-outline"
-                    label={t('profile.adminUpload')}
-                    onPress={() => router.push('/admin/upload')}
-                    colors={colors}
-                  />
                 </>
               ) : null}
               <View style={styles.separator} />
@@ -204,6 +191,9 @@ export default function ProfileScreen() {
                 {t('profile.contactUnavailable')}
               </AppText>
             ) : null}
+            <AppText variant="caption" style={[styles.muted, styles.version]}>
+              {t('profile.version', { version: APP_VERSION })}
+            </AppText>
           </>
         )}
       </ScrollView>
@@ -409,6 +399,7 @@ function makeStyles(colors: ThemeColors) {
     actionText: { flex: 1 },
     danger: { color: colors.danger },
     muted: { color: colors.textSecondary },
+    version: { textAlign: 'center', paddingTop: 8 },
     disabled: { opacity: 0.45 },
   });
 }

@@ -1,7 +1,7 @@
 // Server-side queries for quote request list and read-only detail.
 
 import { useQuery } from '@tanstack/react-query';
-import { sumLineTotalsPkr, toPkrNumber } from '../format';
+import { sumItemQty, sumLineTotalsPkr, toPkrNumber } from '../format';
 import { supabase } from '../supabase';
 import type { Tables } from '../../types/database';
 
@@ -28,10 +28,12 @@ export function useRequests(userId: string | undefined) {
             qty: item.qty,
           }))
         );
+        const itemQty = sumItemQty(items ?? []);
         return {
           ...request,
           total_pkr: fromLines > 0 ? fromLines : toPkrNumber(request.total_pkr),
-          item_count: toPkrNumber(request.item_count),
+          item_count:
+            itemQty > 0 ? itemQty : toPkrNumber(request.item_count),
         };
       });
     },
@@ -73,6 +75,7 @@ export function useRequest(
           qty: item.qty,
         }))
       );
+      const itemQty = sumItemQty(items);
       return {
         request: {
           ...requestResult.data,
@@ -80,7 +83,10 @@ export function useRequest(
             fromLines > 0
               ? fromLines
               : toPkrNumber(requestResult.data.total_pkr),
-          item_count: toPkrNumber(requestResult.data.item_count),
+          item_count:
+            itemQty > 0
+              ? itemQty
+              : toPkrNumber(requestResult.data.item_count),
         },
         items: items.map((item) => ({
           ...item,

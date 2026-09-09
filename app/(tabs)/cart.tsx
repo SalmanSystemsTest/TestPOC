@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useQueryClient } from '@tanstack/react-query';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -15,7 +16,13 @@ import { AppText } from '@/components/AppText';
 import { PartThumbnail } from '@/components/PartThumbnail';
 import { QtyStepper } from '@/components/QtyStepper';
 import { useAuthSession } from '@/lib/auth-context';
-import { formatPkr, lineTotalPkr, localisedName, sumLineTotalsPkr } from '@/lib/format';
+import {
+  formatPkr,
+  lineTotalPkr,
+  localisedName,
+  sumItemQty,
+  sumLineTotalsPkr,
+} from '@/lib/format';
 import { buildOrderWhatsappMessage } from '@/lib/order-whatsapp';
 import {
   useCart,
@@ -40,13 +47,17 @@ export default function CartScreen() {
   const remove = useRemoveCartItem(userId);
   const submit = useSubmitQuote(userId);
   const profile = useProfile(userId);
+  const queryClient = useQueryClient();
   const [note, setNote] = useState('');
   const [submitted, setSubmitted] = useState<SubmittedQuote | null>(null);
+  const [isSending, setIsSending] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
-      return () => setSubmitted(null);
-    }, [])
+      return () => {
+        if (!isSending) setSubmitted(null);
+      };
+    }, [isSending])
   );
 
   const dismissSuccess = () => setSubmitted(null);
@@ -54,8 +65,9 @@ export default function CartScreen() {
   const handleSubmit = () => {
     const lines = cart.data ?? [];
     const capturedNote = note;
+    setIsSending(true);
     submit.mutate(note, {
-      onSuccess: (request) => {
+      onSuccess: async (request) => {
         const text = buildOrderWhatsappMessage({
           request,
           lines,
@@ -79,7 +91,7 @@ export default function CartScreen() {
             followUp: t('cart.whatsappFollowUp'),
           },
         });
-        void dispatchQuoteNotification({
+        await dispatchQuoteNotification({
           request,
           lines,
           note: capturedNote,
@@ -87,7 +99,17 @@ export default function CartScreen() {
           message: text,
         });
         setNote('');
-        setSubmitted(request);
+        setSubmitted({
+          ...request,
+          item_count:
+            sumItemQty(lines.map((line) => ({ qty: line.qty }))) ||
+            request.item_count,
+        });
+        setIsSending(false);
+        void queryClient.invalidateQueries({ queryKey: ['cart'] });
+      },
+      onError: () => {
+        setIsSending(false);
       },
     });
   };
@@ -103,6 +125,22 @@ export default function CartScreen() {
     [cart.data]
   );
 
+  if (isSending && !submitted) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.success}>
+          <ActivityIndicator color={colors.accent} size="large" />
+          <AppText variant="title" weight="700" style={styles.centerText}>
+            {t('cart.submittingTitle')}
+          </AppText>
+          <AppText style={[styles.muted, styles.centerText]}>
+            {t('cart.submittingBody')}
+          </AppText>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   if (submitted) {
     return (
       <SafeAreaView style={styles.safe}>
@@ -113,8 +151,13 @@ export default function CartScreen() {
           <AppText variant="title" weight="700" style={styles.centerText}>
             {t('cart.successTitle')}
           </AppText>
+          {submitted.reference ? (
+            <AppText variant="title" weight="700" style={styles.successReference}>
+              {submitted.reference}
+            </AppText>
+          ) : null}
           <AppText style={[styles.muted, styles.centerText]}>
-            {t('cart.successBody', { reference: submitted.reference })}
+            {t('cart.successBody')}
           </AppText>
           <Pressable
             style={styles.primaryButton}
@@ -350,6 +393,10 @@ function makeStyles(colors: ThemeColors) {
       justifyContent: 'center',
       borderRadius: 34,
       backgroundColor: colors.successBackground,
+    },
+    successReference: {
+      textAlign: 'center',
+      color: colors.primary,
     },
     centerText: { textAlign: 'center' },
     muted: { color: colors.textSecondary },

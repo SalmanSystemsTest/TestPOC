@@ -10,6 +10,10 @@ const corsHeaders = {
     'authorization, x-client-info, apikey, content-type',
 };
 
+declare const EdgeRuntime: {
+  waitUntil: (promise: Promise<unknown>) => void;
+};
+
 const ORDERS_TAB = 'SSG Orders';
 
 type ServiceAccount = {
@@ -69,23 +73,21 @@ const SHEET_HEADERS = [
   'Reference',
   'Date (PKT)',
   'Time (PKT)',
+  'Status',
   'Business',
   'Contact',
   'Phone',
   'Email',
   'City',
-  'SKU',
-  'Part name',
-  'Brand',
-  'OEM',
-  'Qty',
-  'Unit price PKR',
-  'Line total PKR',
-  'Order items',
+  'Address',
+  'Line items',
+  'Total items',
   'Order total PKR',
   'Note',
-  'WhatsApp message',
+  'Quote PDF',
 ];
+
+const QUOTE_PDF_BUCKET = 'order-quotes';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -108,67 +110,137 @@ Deno.serve(async (req) => {
     if (service && quoteRequestId) {
       const allowed = await callerMayNotify(req, service, secretKey, quoteRequestId);
       if (!allowed) return json({ error: 'Unauthorized' }, 401);
-    } else if (!hasUserJwt(req)) {
+    } else if (!hasUserJwt(req) && !isTrustedApiKey(req, secretKey)) {
       return json({ error: 'Unauthorized' }, 401);
     }
 
-    const loaded =
-      (service && quoteRequestId
-        ? await loadQuote(service, quoteRequestId, body.message ?? '')
-        : null) ?? fromPayload(body, quoteRequestId);
-
-    if (!loaded) {
-      return json({ error: 'Quote request not found' }, 404);
+    const run = deliverQuote(service, quoteRequestId, body);
+    if (typeof EdgeRuntime !== 'undefined' && typeof EdgeRuntime.waitUntil === 'function') {
+      EdgeRuntime.waitUntil(
+        run.catch((error) => {
+          console.error(
+            'notify-quote background failed',
+            error instanceof Error ? error.message : error
+          );
+        })
+      );
+      return json({ accepted: true });
     }
 
-    const totals = summarizeItems(loaded.items);
-    const quote: LoadedQuote = {
-      ...loaded,
-      request: {
-        ...loaded.request,
-        item_count:
-          totals.qty > 0 ? totals.qty : toNumber(loaded.request.item_count),
-        total_pkr:
-          totals.totalPkr > 0
-            ? totals.totalPkr
-            : toNumber(loaded.request.total_pkr),
-      },
-    };
-
-    const sheetsResult = await appendOrderRows(quote);
-    const emailResult = await sendOrderEmail(quote);
-    if (service && quoteRequestId) {
-      await writeLog(service, {
-        quote_request_id: quoteRequestId,
-        channel: 'sheets',
-        target: `${Deno.env.get('GOOGLE_SHEET_ID') ?? ''}#${ORDERS_TAB}`,
-        succeeded: sheetsResult.ok,
-        error: sheetsResult.error,
-      });
-      await writeLog(service, {
-        quote_request_id: quoteRequestId,
-        channel: 'email',
-        target: Deno.env.get('RESEND_TO_EMAIL') ?? null,
-        succeeded: emailResult.ok,
-        error: emailResult.error,
-      });
-    }
-
-    return json({
-      sheets: sheetsResult.ok,
-      email: emailResult.ok,
-      tab: ORDERS_TAB,
-      error: sheetsResult.error ?? emailResult.error,
-    });
+    const result = await run;
+    return json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'notify-quote failed';
     return json({ error: message }, 500);
   }
 });
 
+async function deliverQuote(
+  service: SupabaseClient | null,
+  quoteRequestId: string,
+  body: NotifyBody
+): Promise<{
+  sheets: boolean;
+  email: boolean;
+  tab: string;
+  error: string | null;
+}> {
+  const loaded =
+    (service && quoteRequestId
+      ? await loadQuote(service, quoteRequestId, body.message ?? '')
+      : null) ?? fromPayload(body, quoteRequestId);
+
+  if (!loaded) {
+    throw new Error('Quote request not found');
+  }
+
+  const totals = summarizeItems(loaded.items);
+  const quote: LoadedQuote = {
+    ...loaded,
+    request: {
+      ...loaded.request,
+      item_count:
+        totals.qty > 0 ? totals.qty : toNumber(loaded.request.item_count),
+      total_pkr:
+        totals.totalPkr > 0
+          ? totals.totalPkr
+          : toNumber(loaded.request.total_pkr),
+    },
+  };
+
+  let pdf: string | null = null;
+  try {
+    pdf = await buildOrderPdf(quote);
+  } catch (error) {
+    console.error(
+      'quote pdf failed',
+      error instanceof Error ? error.message : error
+    );
+    try {
+      pdf = await buildOrderPdf(quote);
+    } catch {
+      pdf = null;
+    }
+  }
+  const alreadyEmailed = await alreadyLogged(service, quote.request.id, 'email');
+  const pdfUrl = await storeOrderPdf(service, quote.request.reference, pdf);
+  const sheetsResult = await appendOrderRows(quote, pdfUrl);
+  const emailResult = alreadyEmailed
+    ? { ok: true, error: null }
+    : await sendOrderEmail(quote, pdf);
+  if (service && quoteRequestId) {
+    await writeLog(service, {
+      quote_request_id: quoteRequestId,
+      channel: 'sheets',
+      target: `${Deno.env.get('GOOGLE_SHEET_ID') ?? ''}#${ORDERS_TAB}`,
+      succeeded: sheetsResult.ok,
+      error: sheetsResult.error,
+    });
+    await writeLog(service, {
+      quote_request_id: quoteRequestId,
+      channel: 'email',
+      target: Deno.env.get('RESEND_TO_EMAIL') ?? null,
+      succeeded: emailResult.ok,
+      error: emailResult.error,
+    });
+  }
+
+  return {
+    sheets: sheetsResult.ok,
+    email: emailResult.ok,
+    tab: ORDERS_TAB,
+    error: sheetsResult.error ?? emailResult.error,
+  };
+}
+
 function hasUserJwt(req: Request): boolean {
   const authHeader = req.headers.get('Authorization') ?? '';
-  return /^Bearer\s+\S+/i.test(authHeader);
+  return /^Bearer\s+[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+\./.test(authHeader);
+}
+
+function requestApiKey(req: Request): string {
+  return req.headers.get('apikey') ?? '';
+}
+
+function readAnonKey(): string | null {
+  const anon = Deno.env.get('SUPABASE_ANON_KEY')?.trim();
+  if (anon) return anon;
+  const bundled = Deno.env.get('SUPABASE_PUBLISHABLE_KEYS');
+  if (!bundled) return null;
+  try {
+    const parsed = JSON.parse(bundled) as Record<string, string>;
+    return parsed.default ?? Object.values(parsed)[0] ?? null;
+  } catch {
+    return bundled;
+  }
+}
+
+function isTrustedApiKey(req: Request, secretKey: string | null): boolean {
+  const apiKey = requestApiKey(req);
+  if (!apiKey) return false;
+  if (secretKey && apiKey === secretKey) return true;
+  const anon = readAnonKey();
+  return Boolean(anon && apiKey === anon);
 }
 
 function readSecretKey(): string | null {
@@ -194,8 +266,7 @@ async function callerMayNotify(
   secretKey: string | null,
   quoteRequestId: string
 ): Promise<boolean> {
-  const apiKey = req.headers.get('apikey') ?? '';
-  if (secretKey && apiKey === secretKey) return true;
+  if (isTrustedApiKey(req, secretKey)) return true;
   if (!hasUserJwt(req)) return false;
 
   const jwt = (req.headers.get('Authorization') ?? '').replace(
@@ -246,15 +317,17 @@ async function loadQuote(
     .eq('quote_request_id', quoteRequestId);
   if (itemsError) throw itemsError;
   if (!items?.length) {
-    await new Promise((resolve) => setTimeout(resolve, 800));
-    const retry = await service
-      .from('quote_request_items')
-      .select(
-        'sku_snapshot, name_snapshot, brand_snapshot, oem_snapshot, price_snapshot, qty'
-      )
-      .eq('quote_request_id', quoteRequestId);
-    if (retry.error) throw retry.error;
-    items = retry.data;
+    for (let attempt = 0; attempt < 5 && !items?.length; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      const retry = await service
+        .from('quote_request_items')
+        .select(
+          'sku_snapshot, name_snapshot, brand_snapshot, oem_snapshot, price_snapshot, qty'
+        )
+        .eq('quote_request_id', quoteRequestId);
+      if (retry.error) throw retry.error;
+      items = retry.data;
+    }
   }
 
   const { data: profile } = await service
@@ -290,7 +363,8 @@ function fromPayload(body: NotifyBody, quoteRequestId: string): LoadedQuote | nu
 }
 
 async function appendOrderRows(
-  loaded: LoadedQuote
+  loaded: LoadedQuote,
+  pdfUrl: string | null
 ): Promise<{ ok: boolean; error: string | null }> {
   try {
     const sheetId = requiredEnv('GOOGLE_SHEET_ID');
@@ -298,46 +372,42 @@ async function appendOrderRows(
     await ensureOrdersSheet(sheetId, accessToken);
 
     const when = formatPktParts(loaded.request.created_at);
-    const items = loaded.items.length
-      ? loaded.items
-      : [
-          {
-            sku_snapshot: '',
-            name_snapshot: '',
-            brand_snapshot: null,
-            oem_snapshot: null,
-            price_snapshot: 0,
-            qty: 0,
-          },
-        ];
-
-    const rows = items.map((item, index) => {
-      const unit = toNumber(item.price_snapshot);
-      const qty = toNumber(item.qty);
-      return [
+    const totals = summarizeItems(loaded.items);
+    const existingRow = await sheetRowForReference(
+      sheetId,
+      accessToken,
+      loaded.request.reference
+    );
+    if (existingRow) {
+      if (pdfUrl) {
+        await updateSheetPdfCell(sheetId, accessToken, existingRow, pdfUrl);
+      }
+      return { ok: true, error: null };
+    }
+    const pdfCell = pdfUrl
+      ? `=HYPERLINK("${pdfUrl.replaceAll('"', '')}","Open quote PDF")`
+      : '';
+    const rows = [
+      [
         loaded.request.reference,
-        when.date,
-        when.time,
+        `'${when.date}`,
+        `'${when.time}`,
+        'New',
         loaded.profile?.business_name ?? '',
         loaded.profile?.contact_name ?? '',
         loaded.profile?.phone ?? '',
         loaded.profile?.email ?? '',
         loaded.profile?.city ?? '',
-        item.sku_snapshot,
-        item.name_snapshot,
-        item.brand_snapshot ?? '',
-        item.oem_snapshot ?? '',
-        qty,
-        unit,
-        unit * qty,
-        loaded.request.item_count,
+        loaded.profile?.address ?? '',
+        totals.lines,
+        totals.qty || loaded.request.item_count,
         toNumber(loaded.request.total_pkr),
         loaded.request.note ?? '',
-        index === 0 ? loaded.message : '',
-      ];
-    });
+        pdfCell,
+      ],
+    ];
 
-    const range = `${quoteSheetRange(ORDERS_TAB)}!A:S`;
+    const range = `${quoteSheetRange(ORDERS_TAB)}!A:O`;
     const res = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(
         range
@@ -363,6 +433,102 @@ async function appendOrderRows(
   }
 }
 
+async function alreadyLogged(
+  service: SupabaseClient | null,
+  quoteRequestId: string,
+  channel: string
+): Promise<boolean> {
+  if (!service || !quoteRequestId) return false;
+  const { data } = await service
+    .from('notification_log')
+    .select('id')
+    .eq('quote_request_id', quoteRequestId)
+    .eq('channel', channel)
+    .eq('succeeded', true)
+    .limit(1);
+  return Boolean(data?.length);
+}
+
+async function sheetRowForReference(
+  sheetId: string,
+  accessToken: string,
+  reference: string
+): Promise<number | null> {
+  if (!reference) return null;
+  const res = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(
+      `${quoteSheetRange(ORDERS_TAB)}!A:A`
+    )}`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (!res.ok) return null;
+  const json = (await res.json()) as { values?: string[][] };
+  const index = (json.values ?? []).findIndex((row) => row[0] === reference);
+  return index >= 0 ? index + 1 : null;
+}
+
+async function updateSheetPdfCell(
+  sheetId: string,
+  accessToken: string,
+  row: number,
+  pdfUrl: string
+): Promise<void> {
+  const pdfCell = `=HYPERLINK("${pdfUrl.replaceAll('"', '')}","Open quote PDF")`;
+  await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(
+      `${quoteSheetRange(ORDERS_TAB)}!O${row}`
+    )}?valueInputOption=USER_ENTERED`,
+    {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ values: [[pdfCell]] }),
+    }
+  );
+}
+
+async function storeOrderPdf(
+  service: SupabaseClient | null,
+  reference: string,
+  pdf: string | null
+): Promise<string | null> {
+  if (!service || !pdf || !reference) return null;
+  try {
+    const created = await service.storage.createBucket(QUOTE_PDF_BUCKET, {
+      public: true,
+      fileSizeLimit: 10 * 1024 * 1024,
+      allowedMimeTypes: ['application/pdf'],
+    });
+    if (created.error && /already exists/i.test(created.error.message)) {
+      await service.storage.updateBucket(QUOTE_PDF_BUCKET, {
+        public: true,
+        fileSizeLimit: 10 * 1024 * 1024,
+        allowedMimeTypes: ['application/pdf'],
+      });
+    }
+    const path = `${reference.replaceAll('/', '-')}.pdf`;
+    const bytes = decodeBase64(pdf);
+    const { error } = await service.storage.from(QUOTE_PDF_BUCKET).upload(path, bytes, {
+      contentType: 'application/pdf',
+      upsert: true,
+    });
+    if (error) {
+      console.error('quote pdf upload failed', error.message);
+      return null;
+    }
+    const { data } = service.storage.from(QUOTE_PDF_BUCKET).getPublicUrl(path);
+    return data.publicUrl || null;
+  } catch (error) {
+    console.error(
+      'quote pdf store failed',
+      error instanceof Error ? error.message : error
+    );
+    return null;
+  }
+}
+
 async function writeLog(
   service: SupabaseClient,
   row: {
@@ -381,7 +547,8 @@ async function writeLog(
 }
 
 async function sendOrderEmail(
-  loaded: LoadedQuote
+  loaded: LoadedQuote,
+  pdf: string | null
 ): Promise<{ ok: boolean; error: string | null }> {
   try {
     const apiKey = requiredEnv('RESEND_API_KEY');
@@ -389,21 +556,7 @@ async function sendOrderEmail(
     const from =
       Deno.env.get('RESEND_FROM')?.trim() ||
       'SSG Auto Parts <onboarding@resend.dev>';
-    let pdf: string | null = null;
-    try {
-      pdf = await buildOrderPdf(loaded);
-    } catch {
-      pdf = null;
-    }
-    const attachments: Record<string, unknown>[] = [
-      {
-        filename: 'ssg-logo.png',
-        content: SSG_LOGO_PNG_BASE64,
-        content_id: 'ssg-logo',
-        contentId: 'ssg-logo',
-        content_type: 'image/png',
-      },
-    ];
+    const attachments: Record<string, unknown>[] = [];
     if (pdf) {
       attachments.push({
         filename: `${loaded.request.reference}.pdf`,
@@ -485,7 +638,7 @@ function orderEmailHtml(loaded: LoadedQuote): string {
         <table role="presentation" width="640" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:10px;overflow:hidden;">
           <tr>
             <td style="background:#1B2C5B;padding:20px 24px;">
-              <img src="cid:ssg-logo" alt="SSG Auto Parts" height="40" style="display:block;border:0;" />
+              <p style="margin:0;color:#ffffff;font-size:22px;font-weight:bold;letter-spacing:0.3px;">SSG Auto Parts</p>
               <p style="margin:10px 0 0;color:#C2CDE3;font-size:12px;letter-spacing:0.4px;">Trusted since 1971</p>
             </td>
           </tr>
@@ -580,6 +733,82 @@ type PdfPage = {
   drawImage: (image: PdfImage, opts: Record<string, unknown>) => void;
 };
 
+type PdfAlign = 'left' | 'right' | 'center';
+
+function cellBaseline(cellBottom: number, cellHeight: number, fontSize: number): number {
+  const capHeight = fontSize * 0.72;
+  return cellBottom + (cellHeight - capHeight) / 2;
+}
+
+function drawAlignedText(
+  page: PdfPage,
+  text: string,
+  opts: {
+    x: number;
+    width: number;
+    cellBottom: number;
+    cellHeight: number;
+    size: number;
+    font: PdfFont;
+    color: PdfRgb;
+    align: PdfAlign;
+    pad?: number;
+  }
+): void {
+  const pad = opts.pad ?? 6;
+  const widthOf = opts.font.widthOfTextAtSize(text, opts.size);
+  let textX = opts.x + pad;
+  if (opts.align === 'right') textX = opts.x + opts.width - pad - widthOf;
+  if (opts.align === 'center') textX = opts.x + Math.max(0, (opts.width - widthOf) / 2);
+  page.drawText(text, {
+    x: textX,
+    y: cellBaseline(opts.cellBottom, opts.cellHeight, opts.size),
+    size: opts.size,
+    font: opts.font,
+    color: opts.color,
+  });
+}
+
+function drawWrappedInCell(
+  page: PdfPage,
+  lines: string[],
+  opts: {
+    x: number;
+    width: number;
+    cellBottom: number;
+    cellHeight: number;
+    size: number;
+    font: PdfFont;
+    color: PdfRgb;
+    align: PdfAlign;
+    lineHeight: number;
+    pad?: number;
+  }
+): void {
+  if (lines.length <= 1) {
+    drawAlignedText(page, lines[0] ?? '', opts);
+    return;
+  }
+  const capHeight = opts.size * 0.72;
+  const blockHeight = (lines.length - 1) * opts.lineHeight + capHeight;
+  const firstBaseline =
+    opts.cellBottom + (opts.cellHeight - blockHeight) / 2 + (lines.length - 1) * opts.lineHeight;
+  const pad = opts.pad ?? 6;
+  lines.forEach((line, index) => {
+    const widthOf = opts.font.widthOfTextAtSize(line, opts.size);
+    let textX = opts.x + pad;
+    if (opts.align === 'right') textX = opts.x + opts.width - pad - widthOf;
+    if (opts.align === 'center') textX = opts.x + Math.max(0, (opts.width - widthOf) / 2);
+    page.drawText(line, {
+      x: textX,
+      y: firstBaseline - index * opts.lineHeight,
+      size: opts.size,
+      font: opts.font,
+      color: opts.color,
+    });
+  });
+}
+
 async function buildOrderPdf(loaded: LoadedQuote): Promise<string> {
   const { PDFDocument, StandardFonts, rgb } = await import(
     'https://esm.sh/pdf-lib@1.17.1'
@@ -623,76 +852,97 @@ async function buildOrderPdf(loaded: LoadedQuote): Promise<string> {
     if (y - needed < 48) newPage();
   };
 
+  const headerHeight = 72;
+  const headerBottom = pageHeight - headerHeight;
   const drawHeader = () => {
     page.drawRectangle({
       x: 0,
-      y: pageHeight - 78,
+      y: headerBottom,
       width: pageWidth,
-      height: 78,
+      height: headerHeight,
       color: navy,
     });
     page.drawRectangle({
       x: 0,
-      y: pageHeight - 82,
+      y: headerBottom - 4,
       width: pageWidth,
       height: 4,
       color: red,
     });
     if (logo && typeof logo === 'object' && 'width' in logo && 'height' in logo) {
       const image = logo as { width: number; height: number };
-      const height = 36;
+      const height = 34;
       const width = (image.width / image.height) * height;
       page.drawImage(logo, {
         x: margin,
-        y: pageHeight - 58,
+        y: headerBottom + (headerHeight - height) / 2,
         width,
         height,
       });
     } else {
-      page.drawText('SSG Auto Parts', {
+      drawAlignedText(page, 'SSG Auto Parts', {
         x: margin,
-        y: pageHeight - 48,
+        width: 220,
+        cellBottom: headerBottom,
+        cellHeight: headerHeight,
         size: 18,
         font: bold,
         color: white,
+        align: 'left',
       });
     }
-    page.drawText('Trusted since 1971', {
-      x: pageWidth - margin - 108,
-      y: pageHeight - 48,
+    drawAlignedText(page, 'Trusted since 1971', {
+      x: pageWidth - margin - 130,
+      width: 130,
+      cellBottom: headerBottom,
+      cellHeight: headerHeight,
       size: 10,
       font,
       color: rgb(0.76, 0.8, 0.89),
+      align: 'right',
     });
-    y = pageHeight - 104;
+    y = headerBottom - 28;
   };
 
   drawHeader();
 
-  page.drawText('Quote sheet', {
+  const titleSize = 14;
+  const titleHeight = 20;
+  const titleBottom = y - titleHeight;
+  drawAlignedText(page, 'Quote sheet', {
     x: margin,
-    y,
-    size: 16,
+    width: 220,
+    cellBottom: titleBottom,
+    cellHeight: titleHeight,
+    size: titleSize,
     font: bold,
     color: navy,
+    align: 'left',
   });
-  const refText = loaded.request.reference;
-  page.drawText(refText, {
-    x: pageWidth - margin - bold.widthOfTextAtSize(refText, 12),
-    y,
-    size: 12,
+  drawAlignedText(page, loaded.request.reference, {
+    x: pageWidth - margin - 180,
+    width: 180,
+    cellBottom: titleBottom,
+    cellHeight: titleHeight,
+    size: titleSize,
     font: bold,
     color: red,
+    align: 'right',
   });
-  y -= 18;
-  page.drawText('Indicative prices. SSG will confirm the final order by phone.', {
+  y = titleBottom - 2;
+  const disclaimerHeight = 14;
+  drawAlignedText(page, 'Indicative prices. SSG will confirm the final order by phone.', {
     x: margin,
-    y,
+    width: tableWidth,
+    cellBottom: y - disclaimerHeight,
+    cellHeight: disclaimerHeight,
     size: 9,
     font,
     color: muted,
+    align: 'left',
+    pad: 0,
   });
-  y -= 22;
+  y -= disclaimerHeight + 10;
 
   const buyerRows: [string, string][] = [
     ['Business', dash(loaded.profile?.business_name)],
@@ -716,21 +966,28 @@ async function buildOrderPdf(loaded: LoadedQuote): Promise<string> {
     muted,
     rule,
     zebra,
+    paper: white,
+    labelFill: rgb(0.93, 0.94, 0.96),
     ensure,
-  });
-  y -= 18;
-
-  page.drawText('Order details', {
-    x: margin,
-    y,
-    size: 13,
-    font: bold,
-    color: navy,
   });
   y -= 16;
 
+  const sectionHeight = 18;
+  drawAlignedText(page, 'Order details', {
+    x: margin,
+    width: tableWidth,
+    cellBottom: y - sectionHeight,
+    cellHeight: sectionHeight,
+    size: 13,
+    font: bold,
+    color: navy,
+    align: 'left',
+    pad: 0,
+  });
+  y -= sectionHeight + 6;
+
   const columns: PdfColumn[] = [
-    { key: '#', width: 22, align: 'right' },
+    { key: '#', width: 22, align: 'center' },
     { key: 'SKU', width: 68, align: 'left' },
     { key: 'Part name', width: 128, align: 'left' },
     { key: 'Brand', width: 68, align: 'left' },
@@ -740,26 +997,27 @@ async function buildOrderPdf(loaded: LoadedQuote): Promise<string> {
     { key: 'Line PKR', width: 69, align: 'right' },
   ];
 
+  const itemHeaderHeight = 22;
   const drawItemsHeader = () => {
-    ensure(22);
-    drawRowBackground(page, margin, y - 4, tableWidth, 18, headerFill);
+    ensure(itemHeaderHeight + 4);
+    const cellBottom = y - itemHeaderHeight;
+    drawRowBackground(page, margin, cellBottom, tableWidth, itemHeaderHeight, headerFill);
     let x = margin;
     for (const column of columns) {
-      const label = column.key;
-      const textX =
-        column.align === 'right'
-          ? x + column.width - 4 - font.widthOfTextAtSize(label, 8)
-          : x + 4;
-      page.drawText(label, {
-        x: textX,
-        y,
+      drawAlignedText(page, column.key, {
+        x,
+        width: column.width,
+        cellBottom,
+        cellHeight: itemHeaderHeight,
         size: 8,
         font: bold,
         color: white,
+        align: column.align,
+        pad: 5,
       });
       x += column.width;
     }
-    y -= 18;
+    y = cellBottom;
   };
 
   drawItemsHeader();
@@ -791,39 +1049,40 @@ async function buildOrderPdf(loaded: LoadedQuote): Promise<string> {
       formatPkrDisplay(unit * qty),
     ];
     const wrapped = columns.map((column, colIndex) =>
-      wrapCell(values[colIndex] ?? '', font, 8, column.width - 8)
+      wrapCell(values[colIndex] ?? '', font, 8, column.width - 12)
     );
     const lineCount = Math.max(1, ...wrapped.map((lines) => lines.length));
-    const rowHeight = lineCount * 11 + 8;
+    const lineHeight = 11;
+    const rowHeight = Math.max(22, lineCount * lineHeight + 8);
     if (y - rowHeight < 48) {
       newPage();
       drawItemsHeader();
     }
+    const cellBottom = y - rowHeight;
     if (index % 2 === 0) {
-      drawRowBackground(page, margin, y - rowHeight + 10, tableWidth, rowHeight, zebra);
+      drawRowBackground(page, margin, cellBottom, tableWidth, rowHeight, zebra);
     }
     let x = margin;
     columns.forEach((column, colIndex) => {
-      wrapped[colIndex].forEach((line, lineIndex) => {
-        const textX =
-          column.align === 'right'
-            ? x + column.width - 4 - font.widthOfTextAtSize(line, 8)
-            : x + 4;
-        page.drawText(line, {
-          x: textX,
-          y: y - lineIndex * 11,
-          size: 8,
-          font,
-          color: ink,
-        });
+      drawWrappedInCell(page, wrapped[colIndex], {
+        x,
+        width: column.width,
+        cellBottom,
+        cellHeight: rowHeight,
+        size: 8,
+        font,
+        color: ink,
+        align: column.align,
+        lineHeight,
+        pad: 5,
       });
       x += column.width;
     });
-    y -= rowHeight;
+    y = cellBottom;
   });
 
-  y -= 8;
-  ensure(70);
+  y -= 12;
+  ensure(76);
   const summary = [
     ['Line items', String(totals.lines)],
     ['Total quantity', String(totals.qty)],
@@ -831,10 +1090,12 @@ async function buildOrderPdf(loaded: LoadedQuote): Promise<string> {
   ];
   const boxWidth = 220;
   const boxX = pageWidth - margin - boxWidth;
-  const boxHeight = summary.length * 16 + 14;
+  const summaryRowHeight = 18;
+  const boxHeight = summary.length * summaryRowHeight + 10;
+  const boxBottom = y - boxHeight;
   page.drawRectangle({
     x: boxX,
-    y: y - boxHeight + 12,
+    y: boxBottom,
     width: boxWidth,
     height: boxHeight,
     color: zebra,
@@ -842,53 +1103,71 @@ async function buildOrderPdf(loaded: LoadedQuote): Promise<string> {
     borderWidth: 0.6,
   });
   summary.forEach((row, index) => {
-    const rowY = y - index * 16;
-    page.drawText(row[0], {
-      x: boxX + 10,
-      y: rowY,
+    const cellBottom = boxBottom + (summary.length - 1 - index) * summaryRowHeight + 5;
+    drawAlignedText(page, row[0], {
+      x: boxX,
+      width: boxWidth * 0.55,
+      cellBottom,
+      cellHeight: summaryRowHeight,
       size: 9,
       font,
       color: muted,
+      align: 'left',
+      pad: 10,
     });
-    page.drawText(row[1], {
-      x: boxX + boxWidth - 10 - bold.widthOfTextAtSize(row[1], 10),
-      y: rowY,
+    drawAlignedText(page, row[1], {
+      x: boxX + boxWidth * 0.4,
+      width: boxWidth * 0.6,
+      cellBottom,
+      cellHeight: summaryRowHeight,
       size: 10,
       font: bold,
       color: index === 2 ? red : navy,
+      align: 'right',
+      pad: 10,
     });
   });
-  y -= boxHeight + 16;
+  y = boxBottom - 16;
 
   ensure(56);
-  page.drawText('Buyer comments', {
+  const commentsTitleHeight = 16;
+  drawAlignedText(page, 'Buyer comments', {
     x: margin,
-    y,
+    width: tableWidth,
+    cellBottom: y - commentsTitleHeight,
+    cellHeight: commentsTitleHeight,
     size: 11,
     font: bold,
     color: navy,
+    align: 'left',
+    pad: 0,
   });
-  y -= 16;
+  y -= commentsTitleHeight + 6;
+  const commentLineHeight = 12;
   const commentLines = wrapCell(note, font, 9, tableWidth - 16);
-  const commentHeight = commentLines.length * 12 + 14;
+  const commentHeight = Math.max(26, commentLines.length * commentLineHeight + 12);
   ensure(commentHeight + 8);
+  const commentBottom = y - commentHeight;
   page.drawRectangle({
     x: margin,
-    y: y - commentHeight + 12,
+    y: commentBottom,
     width: tableWidth,
     height: commentHeight,
     color: rgb(1, 0.984, 0.96),
     borderColor: rule,
     borderWidth: 0.6,
   });
-  commentLines.forEach((line, index) => {
-    page.drawText(line, {
-      x: margin + 8,
-      y: y - index * 12,
-      size: 9,
-      font,
-      color: ink,
-    });
+  drawWrappedInCell(page, commentLines, {
+    x: margin,
+    width: tableWidth,
+    cellBottom: commentBottom,
+    cellHeight: commentHeight,
+    size: 9,
+    font,
+    color: ink,
+    align: 'left',
+    lineHeight: commentLineHeight,
+    pad: 8,
   });
 
   return doc.saveAsBase64();
@@ -897,7 +1176,7 @@ async function buildOrderPdf(loaded: LoadedQuote): Promise<string> {
 type PdfColumn = {
   key: string;
   width: number;
-  align: 'left' | 'right';
+  align: PdfAlign;
 };
 
 function drawRowBackground(
@@ -924,67 +1203,100 @@ function drawKeyValueTable(
     muted: PdfRgb;
     rule: PdfRgb;
     zebra: PdfRgb;
+    paper: PdfRgb;
+    labelFill: PdfRgb;
     ensure: (needed: number) => void;
   }
 ): number {
   const colWidth = opts.width / 2;
-  const labelWidth = 64;
+  const labelWidth = 78;
+  const lineHeight = 11;
   let y = opts.y;
   for (let index = 0; index < opts.rows.length; index += 2) {
     const left = opts.rows[index];
     const right = opts.rows[index + 1];
-    const leftLines = wrapCell(left[1], opts.font, 9, colWidth - labelWidth - 12);
-    const rightLines = right
-      ? wrapCell(right[1], opts.font, 9, colWidth - labelWidth - 12)
-      : [''];
-    const height = Math.max(leftLines.length, rightLines.length) * 12 + 8;
+    const valueWidth = colWidth - labelWidth - 14;
+    const leftLines = wrapCell(left[1], opts.font, 9, valueWidth);
+    const rightLines = right ? wrapCell(right[1], opts.font, 9, valueWidth) : [''];
+    const height = Math.max(22, Math.max(leftLines.length, rightLines.length) * lineHeight + 10);
     opts.ensure(height);
-    if (index % 4 === 0) {
-      drawRowBackground(page, opts.x, y - height + 10, opts.width, height, opts.zebra);
+    const cellBottom = y - height;
+    drawRowBackground(
+      page,
+      opts.x,
+      cellBottom,
+      opts.width,
+      height,
+      index % 4 === 0 ? opts.zebra : opts.paper
+    );
+    drawRowBackground(page, opts.x, cellBottom, labelWidth, height, opts.labelFill);
+    if (right) {
+      drawRowBackground(page, opts.x + colWidth, cellBottom, labelWidth, height, opts.labelFill);
     }
-    page.drawText(left[0], {
-      x: opts.x + 6,
-      y,
+    drawAlignedText(page, left[0], {
+      x: opts.x,
+      width: labelWidth,
+      cellBottom,
+      cellHeight: height,
       size: 8,
       font: opts.bold,
       color: opts.muted,
+      align: 'left',
+      pad: 8,
     });
-    leftLines.forEach((line, lineIndex) => {
-      page.drawText(line, {
-        x: opts.x + labelWidth,
-        y: y - lineIndex * 12,
-        size: 9,
-        font: opts.font,
-        color: opts.ink,
-      });
+    drawWrappedInCell(page, leftLines, {
+      x: opts.x + labelWidth,
+      width: colWidth - labelWidth,
+      cellBottom,
+      cellHeight: height,
+      size: 9,
+      font: opts.font,
+      color: opts.ink,
+      align: 'left',
+      lineHeight,
+      pad: 8,
     });
     if (right) {
-      page.drawText(right[0], {
-        x: opts.x + colWidth + 6,
-        y,
+      drawAlignedText(page, right[0], {
+        x: opts.x + colWidth,
+        width: labelWidth,
+        cellBottom,
+        cellHeight: height,
         size: 8,
         font: opts.bold,
         color: opts.muted,
+        align: 'left',
+        pad: 8,
       });
-      rightLines.forEach((line, lineIndex) => {
-        page.drawText(line, {
-          x: opts.x + colWidth + labelWidth,
-          y: y - lineIndex * 12,
-          size: 9,
-          font: opts.font,
-          color: opts.ink,
-        });
+      drawWrappedInCell(page, rightLines, {
+        x: opts.x + colWidth + labelWidth,
+        width: colWidth - labelWidth,
+        cellBottom,
+        cellHeight: height,
+        size: 9,
+        font: opts.font,
+        color: opts.ink,
+        align: 'left',
+        lineHeight,
+        pad: 8,
       });
     }
-    y -= height;
+    y = cellBottom;
   }
   page.drawRectangle({
     x: opts.x,
-    y: y + 6,
+    y,
     width: opts.width,
     height: opts.y - y,
     borderColor: opts.rule,
     borderWidth: 0.6,
+  });
+  page.drawRectangle({
+    x: opts.x + colWidth - 0.3,
+    y,
+    width: 0.6,
+    height: opts.y - y,
+    color: opts.rule,
   });
   return y;
 }
@@ -1067,19 +1379,22 @@ function toNumber(value: number | string | null | undefined): number {
 
 function formatPktParts(iso: string | null): { date: string; time: string } {
   const date = iso ? new Date(iso) : new Date();
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Karachi',
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(date);
+  const value = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? '';
+  const hour = value('hour').padStart(2, '0');
+  const minute = value('minute').padStart(2, '0');
   return {
-    date: new Intl.DateTimeFormat('en-GB', {
-      timeZone: 'Asia/Karachi',
-      year: 'numeric',
-      month: 'short',
-      day: '2-digit',
-    }).format(date),
-    time: new Intl.DateTimeFormat('en-GB', {
-      timeZone: 'Asia/Karachi',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    }).format(date),
+    date: `${value('day')} ${value('month')} ${value('year')}`,
+    time: `${hour}:${minute}`,
   };
 }
 
@@ -1163,7 +1478,7 @@ async function ensureOrdersSheet(
     }
   }
 
-  const headerRange = `${quoteSheetRange(ORDERS_TAB)}!A1:S1`;
+  const headerRange = `${quoteSheetRange(ORDERS_TAB)}!A1:O1`;
   const write = await fetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(
       headerRange
@@ -1180,6 +1495,15 @@ async function ensureOrdersSheet(
   if (!write.ok) {
     throw new Error(`Could not write header row: ${await write.text()}`);
   }
+  await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(
+      `${quoteSheetRange(ORDERS_TAB)}!P:Z`
+    )}:clear`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` },
+    }
+  );
 }
 
 function quoteSheetRange(tab: string): string {

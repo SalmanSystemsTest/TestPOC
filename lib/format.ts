@@ -30,6 +30,12 @@ export function sumLineTotalsPkr(
   return lines.reduce((sum, line) => sum + lineTotalPkr(line.price, line.qty), 0);
 }
 
+export function sumItemQty(
+  lines: readonly { qty: number | string | null | undefined }[]
+): number {
+  return lines.reduce((sum, line) => sum + toPkrNumber(line.qty), 0);
+}
+
 export function formatPkrAmount(
   amount: number | string | null | undefined
 ): string {

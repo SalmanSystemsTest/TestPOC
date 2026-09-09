@@ -1,3 +1,4 @@
+import { config } from '../config';
 import { toPkrNumber } from '../format';
 import { supabase } from '../supabase';
 import type { CartLine, SubmittedQuote } from './cart';
@@ -47,25 +48,36 @@ export async function dispatchQuoteNotification(
 
   const { data: sessionData } = await supabase.auth.getSession();
   const accessToken = sessionData.session?.access_token;
-  const headers = accessToken
-    ? { Authorization: `Bearer ${accessToken}` }
-    : undefined;
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    apikey: config.supabaseKey,
+  };
+  if (accessToken) {
+    headers.Authorization = `Bearer ${accessToken}`;
+  }
 
   let lastError: string | null = null;
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
-      const { data, error } = await supabase.functions.invoke('notify-quote', {
-        body,
-        headers,
-      });
-      if (error) {
-        lastError = error.message;
-      } else if (data && typeof data === 'object' && 'sheets' in data) {
-        const result = data as { sheets?: boolean; error?: string };
-        if (result.sheets) return;
-        lastError = result.error ?? 'sheets_failed';
-      } else {
+      const response = await fetch(
+        `${config.supabaseUrl.replace(/\/$/, '')}/functions/v1/notify-quote`,
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(body),
+        }
+      );
+      const data = (await response.json().catch(() => null)) as {
+        accepted?: boolean;
+        sheets?: boolean;
+        error?: string;
+      } | null;
+      if (!response.ok) {
+        lastError = data?.error ?? `notify-quote ${response.status}`;
+      } else if (data?.accepted || data?.sheets || !data) {
         return;
+      } else {
+        lastError = data.error ?? 'sheets_failed';
       }
     } catch (error) {
       lastError = error instanceof Error ? error.message : 'notify-quote failed';

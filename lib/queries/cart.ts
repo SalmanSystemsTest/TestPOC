@@ -163,16 +163,25 @@ export function useSubmitQuote(userId: string | undefined) {
         p_note: note.trim() || undefined,
       });
       if (error) throw error;
-      if (!data) throw new Error('CART_EMPTY');
+      const row = Array.isArray(data) ? data[0] : data;
+      if (!row) throw new Error('CART_EMPTY');
+      let reference = row.reference?.trim() ?? '';
+      if (!reference && row.id) {
+        const fetched = await supabase
+          .from('quote_requests')
+          .select('reference')
+          .eq('id', row.id)
+          .maybeSingle();
+        reference = fetched.data?.reference?.trim() ?? '';
+      }
       return {
-        id: data.id,
-        reference: data.reference,
-        item_count: toPkrNumber(data.item_count),
-        total_pkr: toPkrNumber(data.total_pkr),
+        id: row.id,
+        reference,
+        item_count: toPkrNumber(row.item_count),
+        total_pkr: toPkrNumber(row.total_pkr),
       };
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['cart'] });
       void queryClient.invalidateQueries({ queryKey: ['requests'] });
     },
   });
