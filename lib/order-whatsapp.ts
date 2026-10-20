@@ -1,6 +1,6 @@
 import { Linking } from 'react-native';
 import { config, hasWhatsapp } from './config';
-import { formatPkrAmount, localisedName, toPkrNumber } from './format';
+import { localisedName } from './format';
 import type { CartLine, SubmittedQuote } from './queries/cart';
 import type { Profile } from './queries/profile';
 
@@ -17,6 +17,7 @@ export type OrderWhatsappLabels = {
   oem: string;
   itemsLabel: string;
   totalLabel: string;
+  quantity: string;
   noteLabel: string;
   followUp: string;
 };
@@ -51,9 +52,9 @@ export function buildOrderWhatsappMessage(params: {
   blocks.push('', `*${labels.parts}*`);
   params.lines.forEach((line, index) => {
     const name = localisedName(line.part, params.language);
-    const unit = toPkrNumber(line.part.price_pkr);
-    const lineTotal = unit * line.qty;
     const meta = [
+      line.part.master_pn ? `Master ${line.part.master_pn}` : null,
+      line.part.child_pn ? `Child ${line.part.child_pn}` : null,
       line.part.brand,
       line.part.oem_number ? `${labels.oem} ${line.part.oem_number}` : null,
     ]
@@ -61,17 +62,13 @@ export function buildOrderWhatsappMessage(params: {
       .join(' | ');
 
     blocks.push(
-      `${index + 1}. ${line.part.sku} — ${name}`,
+      `${index + 1}. ${name}`,
       ...(meta ? [`    ${meta}`] : []),
-      `    ${line.qty} × ${formatPkrAmount(unit)} = ${formatPkrAmount(lineTotal)}`
+      `    ${labels.quantity ?? 'Qty'}: ${line.qty}`
     );
   });
 
-  blocks.push(
-    '',
-    `${labels.itemsLabel}: ${params.request.item_count}`,
-    `*${labels.totalLabel}: ${formatPkrAmount(params.request.total_pkr)}*`
-  );
+  blocks.push('', `${labels.itemsLabel}: ${params.request.item_count}`);
 
   const note = params.note.trim();
   if (note) blocks.push('', `${labels.noteLabel}: ${note}`);

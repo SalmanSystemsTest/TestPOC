@@ -1,4 +1,4 @@
-export type Json =
+﻿export type Json =
   | string
   | number
   | boolean
@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.5"
+    PostgrestVersion: "14.17"
   }
   public: {
     Tables: {
@@ -285,53 +285,83 @@ export type Database = {
       parts: {
         Row: {
           brand: string | null
+          cat_model: string | null
           category_id: number | null
+          child_pn: string | null
           created_at: string | null
+          default_uom: string | null
           description: string | null
           description_ur: string | null
+          group_name: string | null
           id: string
           image_url: string | null
           is_active: boolean
+          item_model: string | null
+          make_name: string | null
+          master_pn: string | null
+          model_g: string | null
           name: string
           name_ur: string | null
           oem_number: string | null
-          price_pkr: number
+          origin: string | null
+          price_pkr: number | null
           search_vector: unknown
           sku: string
+          sub_group_name: string | null
           updated_at: string | null
         }
         Insert: {
           brand?: string | null
+          cat_model?: string | null
           category_id?: number | null
+          child_pn?: string | null
           created_at?: string | null
+          default_uom?: string | null
           description?: string | null
           description_ur?: string | null
+          group_name?: string | null
           id?: string
           image_url?: string | null
           is_active?: boolean
+          item_model?: string | null
+          make_name?: string | null
+          master_pn?: string | null
+          model_g?: string | null
           name: string
           name_ur?: string | null
           oem_number?: string | null
-          price_pkr: number
+          origin?: string | null
+          price_pkr?: number | null
           search_vector?: unknown
           sku: string
+          sub_group_name?: string | null
           updated_at?: string | null
         }
         Update: {
           brand?: string | null
+          cat_model?: string | null
           category_id?: number | null
+          child_pn?: string | null
           created_at?: string | null
+          default_uom?: string | null
           description?: string | null
           description_ur?: string | null
+          group_name?: string | null
           id?: string
           image_url?: string | null
           is_active?: boolean
+          item_model?: string | null
+          make_name?: string | null
+          master_pn?: string | null
+          model_g?: string | null
           name?: string
           name_ur?: string | null
           oem_number?: string | null
-          price_pkr?: number
+          origin?: string | null
+          price_pkr?: number | null
           search_vector?: unknown
           sku?: string
+          sub_group_name?: string | null
           updated_at?: string | null
         }
         Relationships: [
@@ -355,6 +385,8 @@ export type Database = {
           id: string
           language: string | null
           phone: string | null
+          preferred_groups: string[]
+          preferred_makes: string[]
           role: string
           status: string
         }
@@ -368,6 +400,8 @@ export type Database = {
           id: string
           language?: string | null
           phone?: string | null
+          preferred_groups?: string[]
+          preferred_makes?: string[]
           role?: string
           status?: string
         }
@@ -381,6 +415,8 @@ export type Database = {
           id?: string
           language?: string | null
           phone?: string | null
+          preferred_groups?: string[]
+          preferred_makes?: string[]
           role?: string
           status?: string
         }
@@ -507,34 +543,148 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_catalogue_filter_options: { Args: never; Returns: Json }
+      get_hierarchical_catalogue_options: {
+        Args: {
+          p_groups?: string[] | null
+          p_makes?: string[] | null
+          p_sub_groups?: string[] | null
+        }
+        Returns: Json
+      }
       hook_restrict_signup: { Args: { event: Json }; Returns: Json }
       is_active_user: { Args: never; Returns: boolean }
       is_admin: { Args: never; Returns: boolean }
-      search_parts: {
+      search_parts:
+        | {
+            Args: {
+              p_category?: number
+              p_limit?: number
+              p_make?: number
+              p_model?: number
+              p_offset?: number
+              p_query?: string
+              p_variant?: number
+            }
+            Returns: {
+              brand: string | null
+              cat_model: string | null
+              category_id: number | null
+              child_pn: string | null
+              created_at: string | null
+              default_uom: string | null
+              description: string | null
+              description_ur: string | null
+              group_name: string | null
+              id: string
+              image_url: string | null
+              is_active: boolean
+              item_model: string | null
+              make_name: string | null
+              master_pn: string | null
+              model_g: string | null
+              name: string
+              name_ur: string | null
+              oem_number: string | null
+              origin: string | null
+              price_pkr: number | null
+              search_vector: unknown
+              sku: string
+              sub_group_name: string | null
+              updated_at: string | null
+            }[]
+            SetofOptions: {
+              from: "*"
+              to: "parts"
+              isOneToOne: false
+              isSetofReturn: true
+            }
+          }
+        | {
+            Args: {
+              p_brand?: string
+              p_cat_model?: string
+              p_category?: number
+              p_group_name?: string
+              p_item_model?: string
+              p_limit?: number
+              p_make?: number
+              p_make_name?: string
+              p_model?: number
+              p_offset?: number
+              p_query?: string
+              p_sub_group_name?: string
+              p_variant?: number
+            }
+            Returns: {
+              brand: string | null
+              cat_model: string | null
+              category_id: number | null
+              child_pn: string | null
+              created_at: string | null
+              default_uom: string | null
+              description: string | null
+              description_ur: string | null
+              group_name: string | null
+              id: string
+              image_url: string | null
+              is_active: boolean
+              item_model: string | null
+              make_name: string | null
+              master_pn: string | null
+              model_g: string | null
+              name: string
+              name_ur: string | null
+              oem_number: string | null
+              origin: string | null
+              price_pkr: number | null
+              search_vector: unknown
+              sku: string
+              sub_group_name: string | null
+              updated_at: string | null
+            }[]
+            SetofOptions: {
+              from: "*"
+              to: "parts"
+              isOneToOne: false
+              isSetofReturn: true
+            }
+          }
+      search_parts_catalogue: {
         Args: {
-          p_category?: number
+          p_brands?: string[] | null
+          p_group_names?: string[] | null
           p_limit?: number
-          p_make?: number
-          p_model?: number
+          p_make_names?: string[] | null
           p_offset?: number
-          p_query?: string
-          p_variant?: number
+          p_query?: string | null
+          p_sub_group_names?: string[] | null
         }
         Returns: {
           brand: string | null
+          cat_model: string | null
           category_id: number | null
+          child_pn: string | null
           created_at: string | null
+          default_uom: string | null
           description: string | null
           description_ur: string | null
+          group_name: string | null
           id: string
           image_url: string | null
           is_active: boolean
+          item_model: string | null
+          make_name: string | null
+          master_pn: string | null
+          model_g: string | null
           name: string
           name_ur: string | null
           oem_number: string | null
-          price_pkr: number
+          origin: string | null
+          price_pkr: number | null
           search_vector: unknown
           sku: string
+          sub_group_name: string | null
           updated_at: string | null
         }[]
         SetofOptions: {

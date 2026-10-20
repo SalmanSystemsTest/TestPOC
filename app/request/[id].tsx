@@ -11,7 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppText } from '@/components/AppText';
 import { useAuthSession } from '@/lib/auth-context';
-import { formatDate, formatPkr, lineTotalPkr } from '@/lib/format';
+import { formatDate } from '@/lib/format';
 import { useRequest } from '@/lib/queries/requests';
 import { useTheme, type ThemeColors } from '@/lib/theme';
 
@@ -65,12 +65,6 @@ export default function RequestScreen() {
             <View style={styles.summaryRow}>
               <AppText>{t('requests.items', { count: request.data.request.item_count })}</AppText>
             </View>
-            <View style={styles.summaryRow}>
-              <AppText>{t('requests.indicativeTotal')}</AppText>
-              <AppText weight="700" ltr style={styles.total}>
-                {formatPkr(request.data.request.total_pkr)}
-              </AppText>
-            </View>
           </View>
 
           <AppText variant="caption" weight="600" style={styles.sectionLabel}>
@@ -82,18 +76,14 @@ export default function RequestScreen() {
                 <View style={styles.itemMain}>
                   <AppText weight="600">{item.name_snapshot}</AppText>
                   <AppText variant="caption" style={styles.muted}>
-                    {[item.brand_snapshot, item.sku_snapshot]
+                    {[item.brand_snapshot, item.oem_snapshot]
                       .filter(Boolean)
                       .join(' · ')}
                   </AppText>
-                  <AppText variant="caption" ltr style={styles.muted}>
-                    {t('requests.quantity', { count: item.qty })} ×{' '}
-                    {formatPkr(item.price_snapshot)}
+                  <AppText variant="caption" style={styles.muted}>
+                    {t('requests.quantity', { count: item.qty })}
                   </AppText>
                 </View>
-                <AppText weight="700" ltr style={styles.total}>
-                    {formatPkr(lineTotalPkr(item.price_snapshot, item.qty))}
-                </AppText>
               </View>
             ))}
           </View>

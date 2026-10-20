@@ -14,22 +14,34 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppText } from '@/components/AppText';
 import { BrandLogo } from '@/components/BrandLogo';
-import { CategoryChips } from '@/components/CategoryChips';
-import { PartCard } from '@/components/PartCard';
-import { SearchBar } from '@/components/SearchBar';
+import { CatalogueFilterBar } from '@/components/CatalogueFilterBar';
 import {
-  VehicleSelector,
-  type VehicleSelection,
-} from '@/components/VehicleSelector';
+  CatalogueHierarchyPicker,
+  type HierarchyStep,
+} from '@/components/CatalogueHierarchyPicker';
+import { PartCard } from '@/components/PartCard';
+import { PartListRow } from '@/components/PartListRow';
+import { SearchBar } from '@/components/SearchBar';
 import { useAuthSession } from '@/lib/auth-context';
 import { config, hasWhatsapp } from '@/lib/config';
+import {
+  emptyHierarchySelection,
+  hierarchyHasSelection,
+  useHierarchyPartsSearch,
+} from '@/lib/queries/catalogue-hierarchy';
 import { useAddToCart, useCart } from '@/lib/queries/cart';
 import { useFavouriteIds, useToggleFavourite } from '@/lib/queries/favourites';
+import {
+  emptyCatalogueFilters,
+  type CatalogueFilters,
+} from '@/lib/queries/catalogue-filters';
 import { usePartsSearch, type Part } from '@/lib/queries/parts';
-import { useCategories } from '@/lib/queries/vehicles';
+import { useProfile } from '@/lib/queries/profile';
 import { useTheme, type ThemeColors } from '@/lib/theme';
 
 const SEARCH_DEBOUNCE_MS = 300;
+
+type CatalogueViewMode = 'grid' | 'hierarchy';
 
 export default function HomeScreen() {
   const { t } = useTranslation();
@@ -39,35 +51,49 @@ export default function HomeScreen() {
 
   const { session } = useAuthSession();
   const userId = session?.user.id;
+  const profile = useProfile(userId);
 
+  const [viewMode, setViewMode] = useState<CatalogueViewMode>('hierarchy');
+  const [hierarchyStep, setHierarchyStep] = useState<HierarchyStep>('make');
+  const [hierarchyResults, setHierarchyResults] = useState(false);
   const [rawQuery, setRawQuery] = useState('');
   const [query, setQuery] = useState('');
-  const [categoryId, setCategoryId] = useState<number | null>(null);
-  const [vehicle, setVehicle] = useState<VehicleSelection>({
-    makeId: null,
-    modelId: null,
-    variantId: null,
-  });
+  const [catalogue, setCatalogue] = useState<CatalogueFilters>(
+    emptyCatalogueFilters
+  );
+  const [hierarchy, setHierarchy] = useState(emptyHierarchySelection);
 
-  // Typing must not fire one RPC per keystroke.
   useEffect(() => {
     const timer = setTimeout(() => setQuery(rawQuery), SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(timer);
   }, [rawQuery]);
 
-  const filters = useMemo(
+  const gridFilters = useMemo(
     () => ({
       query,
-      categoryId,
-      makeId: vehicle.makeId,
-      modelId: vehicle.modelId,
-      variantId: vehicle.variantId,
+      catalogue,
     }),
-    [query, categoryId, vehicle]
+    [query, catalogue]
   );
 
-  const categories = useCategories();
-  const parts = usePartsSearch(filters);
+  const hierarchyFilters = useMemo(
+    () => ({
+      query,
+      selection: hierarchy,
+    }),
+    [query, hierarchy]
+  );
+
+  const gridParts = usePartsSearch(gridFilters);
+  const hierarchyParts = useHierarchyPartsSearch(
+    hierarchyFilters,
+    viewMode === 'hierarchy' &&
+      hierarchyResults &&
+      hierarchyHasSelection(hierarchy)
+  );
+
+  const parts = viewMode === 'grid' ? gridParts : hierarchyParts;
+
   const favourites = useFavouriteIds(userId);
   const toggleFavourite = useToggleFavourite(userId);
   const addToCart = useAddToCart(userId);
@@ -82,25 +108,15 @@ export default function HomeScreen() {
     [favourites.data]
   );
 
-  const iconByCategoryId = useMemo(() => {
-    const map = new Map<number, string | null>();
-    for (const row of categories.data ?? []) map.set(row.id, row.icon);
-    return map;
-  }, [categories.data]);
-
   const rows = useMemo(
     () => (parts.data?.pages ?? []).flat(),
     [parts.data?.pages]
   );
 
-  const renderItem = ({ item }: ListRenderItemInfo<Part>) => (
+  const renderGridItem = ({ item }: ListRenderItemInfo<Part>) => (
     <PartCard
       part={item}
-      categoryIcon={
-        item.category_id === null
-          ? null
-          : iconByCategoryId.get(item.category_id) ?? null
-      }
+      categoryIcon={item.sub_group_name}
       isFavourite={favouriteIds.has(item.id)}
       onPress={() => router.push(`/part/${item.id}`)}
       onToggleFavourite={() =>
@@ -114,14 +130,114 @@ export default function HomeScreen() {
     />
   );
 
+  const renderListItem = ({ item }: ListRenderItemInfo<Part>) => (
+    <PartListRow
+      part={item}
+      isFavourite={favouriteIds.has(item.id)}
+      onPress={() => router.push(`/part/${item.id}`)}
+      onToggleFavourite={() =>
+        toggleFavourite.mutate({
+          partId: item.id,
+          isFavourite: favouriteIds.has(item.id),
+        })
+      }
+      addedToCart={addedIds.has(item.id)}
+      onAddToCart={() => addToCart.mutate({ partId: item.id })}
+    />
+  );
+
+  const toggleViewMode = () => {
+    setViewMode((current) => (current === 'grid' ? 'hierarchy' : 'grid'));
+  };
+
+  const handleHierarchyCommit = (next: typeof hierarchy) => {
+    setHierarchy(next);
+  };
+
+  const renderCatalogueHeader = (showSearch: boolean) => (
+    <View style={styles.header}>
+      <View style={styles.titleRow}>
+        <BrandLogo variant="header" />
+        <View style={styles.titleActions}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={
+              viewMode === 'grid'
+                ? t('catalogue.viewHierarchy')
+                : t('catalogue.viewGrid')
+            }
+            onPress={toggleViewMode}
+            style={styles.viewToggle}
+          >
+            <Ionicons
+              name={viewMode === 'grid' ? 'list' : 'grid'}
+              size={22}
+              color={colors.textPrimary}
+            />
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t('part.contactSsg')}
+            disabled={!hasWhatsapp}
+            onPress={() => {
+              if (!hasWhatsapp || !config.ssgWhatsapp) return;
+              const message = t('catalogue.whatsappMessage');
+              void Linking.openURL(
+                `https://wa.me/${config.ssgWhatsapp}?text=${encodeURIComponent(message)}`
+              );
+            }}
+            style={[
+              styles.whatsapp,
+              hasWhatsapp ? null : styles.whatsappDisabled,
+            ]}
+          >
+            <Ionicons
+              name="logo-whatsapp"
+              size={22}
+              color={hasWhatsapp ? colors.success : colors.textMuted}
+            />
+          </Pressable>
+        </View>
+      </View>
+      {showSearch ? (
+        <SearchBar value={rawQuery} onChangeText={setRawQuery} />
+      ) : null}
+    </View>
+  );
+
+  if (viewMode === 'hierarchy' && !hierarchyResults) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.hierarchyShell}>
+          {renderCatalogueHeader(false)}
+          <View style={styles.hierarchyBody}>
+            <CatalogueHierarchyPicker
+              value={hierarchy}
+              onChange={handleHierarchyCommit}
+              step={hierarchyStep}
+              onStepChange={setHierarchyStep}
+              onComplete={() => setHierarchyResults(true)}
+              preferredMakes={profile.data?.preferred_makes ?? []}
+              preferredGroups={profile.data?.preferred_groups ?? []}
+            />
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const showHierarchySummary =
+    viewMode === 'hierarchy' && hierarchyResults && hierarchyHasSelection(hierarchy);
+
   return (
     <SafeAreaView style={styles.safe}>
       <FlatList
-        data={rows}
+        key={viewMode}
+        data={viewMode === 'grid' || showHierarchySummary ? rows : []}
         keyExtractor={(item) => item.id}
-        renderItem={renderItem}
-        numColumns={2}
-        columnWrapperStyle={styles.column}
+        renderItem={viewMode === 'grid' ? renderGridItem : renderListItem}
+        numColumns={viewMode === 'grid' ? 2 : 1}
+        columnWrapperStyle={viewMode === 'grid' ? styles.column : undefined}
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
         onEndReachedThreshold={0.4}
@@ -131,39 +247,40 @@ export default function HomeScreen() {
           }
         }}
         ListHeaderComponent={
-          <View style={styles.header}>
-            <View style={styles.titleRow}>
-              <BrandLogo variant="header" />
+          <View style={styles.headerBlock}>
+            {renderCatalogueHeader(true)}
+            {viewMode === 'grid' ? (
+              <CatalogueFilterBar
+                value={catalogue}
+                onChange={setCatalogue}
+                preferredMakes={profile.data?.preferred_makes ?? []}
+                preferredGroups={profile.data?.preferred_groups ?? []}
+              />
+            ) : showHierarchySummary ? (
               <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={t('part.contactSsg')}
-                disabled={!hasWhatsapp}
+                style={styles.summaryBar}
                 onPress={() => {
-                  if (!hasWhatsapp || !config.ssgWhatsapp) return;
-                  const message = t('catalogue.whatsappMessage');
-                  void Linking.openURL(
-                    `https://wa.me/${config.ssgWhatsapp}?text=${encodeURIComponent(message)}`
-                  );
+                  setHierarchyResults(false);
+                  setHierarchyStep('brand');
                 }}
-                style={[
-                  styles.whatsapp,
-                  hasWhatsapp ? null : styles.whatsappDisabled,
-                ]}
+                accessibilityRole="button"
+                accessibilityLabel={t('catalogue.hierarchyEditFilters')}
               >
-                <Ionicons
-                  name="logo-whatsapp"
-                  size={22}
-                  color={hasWhatsapp ? colors.success : colors.textMuted}
-                />
+                <View style={styles.summaryText}>
+                  <AppText variant="caption" weight="600" style={styles.summaryLabel}>
+                    {t('catalogue.hierarchyTitle')}
+                  </AppText>
+                  <AppText variant="caption" numberOfLines={2}>
+                    {[...hierarchy.makes, ...hierarchy.groups, ...hierarchy.subGroups, ...hierarchy.brands].join(
+                      ' · '
+                    )}
+                  </AppText>
+                </View>
+                <AppText variant="caption" weight="600" style={styles.summaryEdit}>
+                  {t('catalogue.hierarchyEditFilters')}
+                </AppText>
               </Pressable>
-            </View>
-            <SearchBar value={rawQuery} onChangeText={setRawQuery} />
-            <VehicleSelector value={vehicle} onChange={setVehicle} />
-            <CategoryChips
-              categories={categories.data ?? []}
-              selectedId={categoryId}
-              onSelect={setCategoryId}
-            />
+            ) : null}
           </View>
         }
         ListEmptyComponent={
@@ -204,11 +321,24 @@ function makeStyles(colors: ThemeColors) {
       flex: 1,
       backgroundColor: colors.background,
     },
+    hierarchyShell: {
+      flex: 1,
+      paddingStart: 16,
+      paddingEnd: 16,
+      paddingBottom: 12,
+    },
+    hierarchyBody: {
+      flex: 1,
+      paddingTop: 4,
+    },
     content: {
       paddingStart: 16,
       paddingEnd: 16,
       paddingBottom: 28,
       gap: 12,
+    },
+    headerBlock: {
+      gap: 14,
     },
     header: {
       gap: 14,
@@ -221,6 +351,19 @@ function makeStyles(colors: ThemeColors) {
       justifyContent: 'space-between',
       gap: 12,
     },
+    titleActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    viewToggle: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.surfaceAlt,
+    },
     whatsapp: {
       width: 40,
       height: 40,
@@ -231,6 +374,26 @@ function makeStyles(colors: ThemeColors) {
     },
     whatsappDisabled: {
       backgroundColor: colors.surfaceAlt,
+    },
+    summaryBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      padding: 12,
+      borderRadius: 12,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    summaryText: {
+      flex: 1,
+      gap: 4,
+    },
+    summaryLabel: {
+      color: colors.textSecondary,
+    },
+    summaryEdit: {
+      color: colors.accent,
     },
     column: {
       gap: 12,

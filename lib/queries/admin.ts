@@ -9,6 +9,7 @@ export type ImportSummary = {
   rowsRead: number;
   created: number;
   updated: number;
+  removed: number;
   skipped: number;
   errors: string[];
 };

@@ -16,11 +16,11 @@ import { AppText } from '@/components/AppText';
 import { useAuthSession } from '@/lib/auth-context';
 import { config, hasWhatsapp } from '@/lib/config';
 import { categoryArt } from '@/lib/category-art';
-import { formatPkr, localisedName } from '@/lib/format';
+import { localisedName } from '@/lib/format';
+import { partCardSubtitle, partDetailRows } from '@/lib/part-display';
 import { useAddToCart, useCart } from '@/lib/queries/cart';
 import { useFavouriteIds, useToggleFavourite } from '@/lib/queries/favourites';
-import { usePart, usePartFitments, type FitmentRule } from '@/lib/queries/parts';
-import { useCategories } from '@/lib/queries/vehicles';
+import { usePart } from '@/lib/queries/parts';
 import { useTheme, type ThemeColors } from '@/lib/theme';
 
 export default function PartScreen() {
@@ -34,8 +34,6 @@ export default function PartScreen() {
   const userId = session?.user.id;
 
   const part = usePart(id);
-  const fitments = usePartFitments(id);
-  const categories = useCategories();
   const favourites = useFavouriteIds(userId);
   const toggleFavourite = useToggleFavourite(userId);
   const addToCart = useAddToCart(userId);
@@ -51,16 +49,6 @@ export default function PartScreen() {
     () => new Set(favourites.data ?? []).has(id ?? ''),
     [favourites.data, id]
   );
-
-  const category = useMemo(
-    () =>
-      (categories.data ?? []).find((c) => c.id === part.data?.category_id) ??
-      null,
-    [categories.data, part.data?.category_id]
-  );
-  const categoryName = category
-    ? localisedName(category, i18n.language)
-    : null;
 
   if (part.isPending) {
     return (
@@ -84,7 +72,7 @@ export default function PartScreen() {
   }
 
   const row = part.data;
-  const artwork = categoryArt(category?.icon);
+  const artwork = categoryArt(null);
   const showImage = Boolean(row.image_url) && !imageFailed;
   const description =
     i18n.language === 'ur' && row.description_ur
@@ -94,7 +82,6 @@ export default function PartScreen() {
   const openWhatsapp = () => {
     if (!hasWhatsapp || !config.ssgWhatsapp) return;
     const message = t('part.whatsappMessage', {
-      sku: row.sku,
       name: localisedName(row, i18n.language),
     });
     void Linking.openURL(
@@ -141,30 +128,20 @@ export default function PartScreen() {
           <AppText variant="title" weight="700">
             {localisedName(row, i18n.language)}
           </AppText>
-          {row.brand ? (
-            <AppText style={styles.muted}>{row.brand}</AppText>
+          {partCardSubtitle(row) ? (
+            <AppText style={styles.muted}>{partCardSubtitle(row)}</AppText>
           ) : null}
-          <AppText weight="700" ltr style={styles.price}>
-            {formatPkr(row.price_pkr)}
-          </AppText>
         </View>
 
         <View style={styles.card}>
-          <SpecRow label={t('part.sku')} value={row.sku} colors={colors} />
-          {row.oem_number ? (
+          {partDetailRows(row).map((spec) => (
             <SpecRow
-              label={t('part.oem')}
-              value={row.oem_number}
+              key={spec.labelKey}
+              label={t(spec.labelKey)}
+              value={spec.value}
               colors={colors}
             />
-          ) : null}
-          {categoryName ? (
-            <SpecRow
-              label={t('part.category')}
-              value={categoryName}
-              colors={colors}
-            />
-          ) : null}
+          ))}
         </View>
 
         {description ? (
@@ -175,32 +152,6 @@ export default function PartScreen() {
             <AppText style={styles.body}>{description}</AppText>
           </View>
         ) : null}
-
-        <View style={styles.block}>
-          <AppText variant="caption" weight="600" style={styles.sectionLabel}>
-            {t('part.fitment')}
-          </AppText>
-          {fitments.isPending ? (
-            <ActivityIndicator color={colors.accent} />
-          ) : (fitments.data ?? []).length === 0 ? (
-            <AppText style={styles.muted}>{t('part.fitmentNone')}</AppText>
-          ) : (
-            <View style={styles.card}>
-              {(fitments.data ?? []).map((rule) => (
-                <View key={rule.id} style={styles.fitmentRow}>
-                  <Ionicons
-                    name="car-outline"
-                    size={16}
-                    color={colors.textMuted}
-                  />
-                  <AppText variant="caption" style={styles.body}>
-                    {fitmentLabel(rule, i18n.language, t)}
-                  </AppText>
-                </View>
-              ))}
-            </View>
-          )}
-        </View>
 
         <View style={styles.actions}>
           <Pressable
@@ -246,37 +197,6 @@ export default function PartScreen() {
       </ScrollView>
     </SafeAreaView>
   );
-}
-
-/**
- * A null model means the rule covers the whole make, so it must read as
- * "All Toyota models" rather than an empty vehicle name.
- */
-function fitmentLabel(
-  rule: FitmentRule,
-  language: string,
-  t: (key: string, options?: Record<string, string>) => string
-): string {
-  const make =
-    language === 'ur' && rule.makeNameUr ? rule.makeNameUr : rule.makeName;
-
-  if (rule.modelName === null) {
-    return t('part.allOfMake', { make });
-  }
-
-  const model =
-    language === 'ur' && rule.modelNameUr ? rule.modelNameUr : rule.modelName;
-
-  if (rule.variantName === null) {
-    return t('part.allOfModel', { model: `${make} ${model}` });
-  }
-
-  const variant =
-    language === 'ur' && rule.variantNameUr
-      ? rule.variantNameUr
-      : rule.variantName;
-
-  return `${make} ${model} ${variant}`;
 }
 
 function Header({

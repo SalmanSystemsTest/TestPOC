@@ -20,7 +20,10 @@ function unwrapCartPart(
   if (!row || typeof row !== 'object') return null;
   const { categories, ...part } = row;
   return {
-    part: { ...part, price_pkr: toPkrNumber(part.price_pkr) },
+    part: {
+      ...part,
+      price_pkr: part.price_pkr === null ? null : toPkrNumber(part.price_pkr),
+    },
     categoryIcon: categories?.icon ?? categories?.slug ?? null,
   };
 }

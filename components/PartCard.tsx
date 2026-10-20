@@ -7,7 +7,8 @@ import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { AppText } from '@/components/AppText';
 import { categoryArt } from '@/lib/category-art';
-import { formatPkr, localisedName } from '@/lib/format';
+import { localisedName } from '@/lib/format';
+import { partCardSubtitle } from '@/lib/part-display';
 import type { Part } from '@/lib/queries/parts';
 import { useTheme, type ThemeColors } from '@/lib/theme';
 
@@ -80,14 +81,11 @@ export function PartCard({
           <AppText variant="caption" weight="500" numberOfLines={2}>
             {localisedName(part, i18n.language)}
           </AppText>
-          {part.brand ? (
-            <AppText variant="caption" style={styles.brand} numberOfLines={1}>
-              {part.brand}
+          {partCardSubtitle(part) ? (
+            <AppText variant="caption" style={styles.brand} numberOfLines={2}>
+              {partCardSubtitle(part)}
             </AppText>
           ) : null}
-          <AppText weight="700" ltr style={styles.price}>
-            {formatPkr(part.price_pkr)}
-          </AppText>
         </Pressable>
 
         <Pressable
@@ -148,11 +146,6 @@ function makeStyles(colors: ThemeColors) {
       color: colors.textMuted,
       fontSize: 11,
       marginTop: 2,
-    },
-    price: {
-      color: colors.primary,
-      fontSize: 15,
-      marginTop: 4,
     },
     addButton: {
       minHeight: 32,

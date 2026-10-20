@@ -4,7 +4,8 @@ export function isProfileComplete(profile: Profile | null | undefined): boolean 
   if (!profile) return false;
   if (profile.role === 'admin') return true;
   return Boolean(
-    profile.business_name?.trim() &&
+    profile.contact_name?.trim() &&
+      profile.business_name?.trim() &&
       profile.city?.trim() &&
       profile.address?.trim()
   );

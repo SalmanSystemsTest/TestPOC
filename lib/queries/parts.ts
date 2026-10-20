@@ -5,9 +5,9 @@ import {
   useQuery,
   type QueryClient,
 } from '@tanstack/react-query';
-import { toPkrNumber } from '../format';
 import { supabase } from '../supabase';
 import type { Tables } from '../../types/database';
+import type { CatalogueFilters } from './catalogue-filters';
 
 export type Part = Tables<'parts'>;
 
@@ -15,48 +15,45 @@ export const PAGE_SIZE = 20;
 
 export type PartFilters = {
   query: string;
-  makeId: number | null;
-  modelId: number | null;
-  variantId: number | null;
-  categoryId: number | null;
+  catalogue: CatalogueFilters;
 };
 
 export const emptyFilters: PartFilters = {
   query: '',
-  makeId: null,
-  modelId: null,
-  variantId: null,
-  categoryId: null,
+  catalogue: {
+    makeName: null,
+    groupName: null,
+    subGroupName: null,
+    brand: null,
+    catModel: null,
+    itemModel: null,
+  },
 };
 
-export function hasVehicleFilter(filters: PartFilters): boolean {
-  return filters.makeId !== null;
-}
-
 /**
- * All filtering and paging happens inside the search_parts RPC. Passing
- * undefined rather than null lets the function's own defaults apply, and
- * keeps the fitment-nullability logic in one place in SQL.
+ * All filtering and paging happens inside the search_parts RPC. PostgREST
+ * cannot pick between the legacy and catalogue overloads unless the catalogue
+ * text args are present (use null when unset).
  */
 async function fetchPartsPage(
   filters: PartFilters,
   offset: number
 ): Promise<Part[]> {
   const trimmed = filters.query.trim();
+  const c = filters.catalogue;
   const { data, error } = await supabase.rpc('search_parts', {
-    p_query: trimmed.length > 0 ? trimmed : undefined,
-    p_make: filters.makeId ?? undefined,
-    p_model: filters.modelId ?? undefined,
-    p_variant: filters.variantId ?? undefined,
-    p_category: filters.categoryId ?? undefined,
+    p_query: trimmed.length > 0 ? trimmed : null,
+    p_make_name: c.makeName,
+    p_group_name: c.groupName,
+    p_sub_group_name: c.subGroupName,
+    p_brand: c.brand,
+    p_cat_model: c.catModel,
+    p_item_model: c.itemModel,
     p_limit: PAGE_SIZE,
     p_offset: offset,
   });
   if (error) throw error;
-  return (data ?? []).map((part) => ({
-    ...part,
-    price_pkr: toPkrNumber(part.price_pkr),
-  }));
+  return data ?? [];
 }
 
 export function prefetchCatalogue(queryClient: QueryClient): Promise<void> {

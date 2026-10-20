@@ -41,7 +41,7 @@ export async function dispatchQuoteNotification(
       name_snapshot: line.part.name,
       brand_snapshot: line.part.brand,
       oem_snapshot: line.part.oem_number,
-      price_snapshot: toPkrNumber(line.part.price_pkr),
+      price_snapshot: 0,
       qty: toPkrNumber(line.qty) || 1,
     })),
   };

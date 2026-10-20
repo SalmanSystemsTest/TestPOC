@@ -16,13 +16,8 @@ import { AppText } from '@/components/AppText';
 import { PartThumbnail } from '@/components/PartThumbnail';
 import { QtyStepper } from '@/components/QtyStepper';
 import { useAuthSession } from '@/lib/auth-context';
-import {
-  formatPkr,
-  lineTotalPkr,
-  localisedName,
-  sumItemQty,
-  sumLineTotalsPkr,
-} from '@/lib/format';
+import { localisedName, sumItemQty } from '@/lib/format';
+import { partCardSubtitle } from '@/lib/part-display';
 import { buildOrderWhatsappMessage } from '@/lib/order-whatsapp';
 import {
   useCart,
@@ -87,6 +82,7 @@ export default function CartScreen() {
             oem: t('cart.whatsappOem'),
             itemsLabel: t('cart.whatsappItems'),
             totalLabel: t('cart.whatsappTotal'),
+            quantity: t('cart.whatsappQty'),
             noteLabel: t('cart.whatsappNote'),
             followUp: t('cart.whatsappFollowUp'),
           },
@@ -113,17 +109,6 @@ export default function CartScreen() {
       },
     });
   };
-
-  const total = useMemo(
-    () =>
-      sumLineTotalsPkr(
-        (cart.data ?? []).map((line) => ({
-          price: line.part.price_pkr,
-          qty: line.qty,
-        }))
-      ),
-    [cart.data]
-  );
 
   if (isSending && !submitted) {
     return (
@@ -228,9 +213,11 @@ export default function CartScreen() {
                     <AppText weight="600" numberOfLines={2}>
                       {localisedName(part, i18n.language)}
                     </AppText>
-                    <AppText variant="caption" ltr style={styles.muted}>
-                      {formatPkr(part.price_pkr)}
-                    </AppText>
+                    {partCardSubtitle(part) ? (
+                      <AppText variant="caption" style={styles.muted} numberOfLines={2}>
+                        {partCardSubtitle(part)}
+                      </AppText>
+                    ) : null}
                     <View style={styles.lineActions}>
                       <QtyStepper
                         value={qty}
@@ -246,23 +233,8 @@ export default function CartScreen() {
                       </Pressable>
                     </View>
                   </View>
-                  <AppText variant="caption" weight="700" ltr style={styles.linePrice}>
-                    {formatPkr(lineTotalPkr(part.price_pkr, qty))}
-                  </AppText>
                 </View>
               ))}
-            </View>
-
-            <View style={styles.summary}>
-              <View style={styles.summaryRow}>
-                <AppText weight="600">{t('cart.estimatedTotal')}</AppText>
-                <AppText weight="700" ltr style={styles.total}>
-                  {formatPkr(total)}
-                </AppText>
-              </View>
-              <AppText variant="caption" style={styles.muted}>
-                {t('cart.indicative')}
-              </AppText>
             </View>
 
             <View style={styles.noteBlock}>

@@ -11,7 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppText } from '@/components/AppText';
 import { useAuthSession } from '@/lib/auth-context';
-import { formatDate, formatPkr } from '@/lib/format';
+import { formatDate } from '@/lib/format';
 import { useRequests } from '@/lib/queries/requests';
 import { useTheme, type ThemeColors } from '@/lib/theme';
 
@@ -58,14 +58,6 @@ export default function RequestsScreen() {
               </AppText>
               <AppText variant="caption" style={styles.muted}>
                 {t('requests.items', { count: item.item_count })}
-              </AppText>
-            </View>
-            <View style={styles.totalRow}>
-              <AppText variant="caption" style={styles.muted}>
-                {t('requests.indicativeTotal')}
-              </AppText>
-              <AppText weight="700" ltr style={styles.total}>
-                {formatPkr(item.total_pkr)}
               </AppText>
             </View>
           </Pressable>

@@ -14,6 +14,7 @@ type ImportSummary = {
   rowsRead: number;
   created: number;
   updated: number;
+  removed: number;
   skipped: number;
   errors: string[];
 };
@@ -22,26 +23,19 @@ type PartRow = {
   sheetRow: number;
   sku: string;
   name: string;
-  nameUr: string | null;
-  brand: string | null;
+  masterPn: string | null;
+  childPn: string | null;
   oemNumber: string | null;
-  categorySlug: string;
-  pricePkr: number;
-  description: string | null;
-  descriptionUr: string | null;
-  imageUrl: string | null;
-  isActive: boolean;
+  defaultUom: string | null;
+  itemModel: string | null;
+  catModel: string | null;
+  modelG: string | null;
+  makeName: string | null;
+  groupName: string | null;
+  subGroupName: string | null;
+  brand: string | null;
+  origin: string | null;
 };
-
-type FitmentRow = {
-  sheetRow: number;
-  sku: string;
-  make: string;
-  model: string | null;
-  variant: string | null;
-};
-
-type Category = { id: number; slug: string };
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -73,42 +67,25 @@ Deno.serve(async (req) => {
 
     const bytes = new Uint8Array(await downloaded.data.arrayBuffer());
     const workbook = XLSX.read(bytes, { type: 'array', cellDates: false });
-    const partsSheet = findSheet(workbook, 'parts');
-    const fitmentSheet = findSheet(workbook, 'fitment');
-    if (!partsSheet) {
-      return json(emptySummary(['Missing sheet: Parts']), 200);
+    const sheetName =
+      workbook.SheetNames.find((name) =>
+        name.toLowerCase().includes('main view')
+      ) ?? workbook.SheetNames[0];
+    if (!sheetName) {
+      return json(emptySummary(['The workbook has no sheets']), 200);
     }
-    if (!fitmentSheet) {
-      return json(emptySummary(['Missing sheet: Fitment']), 200);
-    }
 
-    const { data: categories, error: categoryError } = await service
-      .from('categories')
-      .select('id, slug');
-    if (categoryError) throw categoryError;
-
-    const categoryBySlug = new Map(
-      (categories as Category[]).map((row) => [row.slug.toLowerCase(), row])
-    );
-
-    const parsedParts = parseParts(workbook.Sheets[partsSheet], categoryBySlug);
-    const parsedFitment = parseFitment(workbook.Sheets[fitmentSheet]);
-    const errors = [...parsedParts.errors, ...parsedFitment.errors];
+    const parsedParts = parseClientSheet(workbook.Sheets[sheetName]);
+    const errors = [...parsedParts.errors];
     if (parsedParts.rows.length === 0 && parsedParts.errors.length === 0) {
-      errors.push('Parts sheet has no data rows');
-    }
-
-    const partSkus = new Set(parsedParts.rows.map((row) => row.sku));
-    for (const row of parsedFitment.rows) {
-      if (!partSkus.has(row.sku)) {
-        errors.push(`Fitment row ${row.sheetRow}: SKU ${row.sku} is not in the Parts sheet`);
-      }
+      errors.push('The sheet has no data rows');
     }
 
     const summary: ImportSummary = {
       rowsRead: parsedParts.rowsRead,
       created: 0,
       updated: 0,
+      removed: 0,
       skipped: parsedParts.skipped,
       errors,
     };
@@ -117,10 +94,15 @@ Deno.serve(async (req) => {
       return json(summary);
     }
 
-    const applied = await applyImport(service, parsedParts.rows, parsedFitment.rows);
+    const applied = await applyClientImport(service, parsedParts.rows);
     return json({ ...summary, ...applied });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'import-parts failed';
+    const message =
+      error instanceof Error
+        ? error.message
+        : typeof error === 'object' && error !== null && 'message' in error
+          ? String((error as { message: unknown }).message)
+          : 'import-parts failed';
     return json({ error: message }, 500);
   }
 });
@@ -142,9 +124,8 @@ async function callerIsAdmin(req: Request, service: SupabaseClient): Promise<boo
   return profile?.role === 'admin' && profile.status === 'active';
 }
 
-function parseParts(
-  sheet: XLSX.WorkSheet,
-  categoryBySlug: Map<string, Category>
+function parseClientSheet(
+  sheet: XLSX.WorkSheet
 ): { rows: PartRow[]; rowsRead: number; skipped: number; errors: string[] } {
   const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
     defval: '',
@@ -158,302 +139,127 @@ function parseParts(
   raw.forEach((record, index) => {
     const sheetRow = index + 2;
     const mapped = mapRecord(record);
-    const sku = text(mapped.sku);
-    const name = text(mapped.name);
-    const categorySlug = text(mapped.category).toLowerCase();
+    const sku = text(mapped.item_id ?? mapped.sku);
+    const name = text(mapped.item_descr ?? mapped.name);
     const hasAny = Object.values(mapped).some((value) => text(value).length > 0);
 
-    if (!sku && !hasAny) {
+    if (!sku) {
+      if (name) {
+        errors.push(`Row ${sheetRow}: Item ID is required`);
+        return;
+      }
       skipped += 1;
       return;
     }
-    if (!sku) {
-      errors.push(`Parts row ${sheetRow}: SKU is required`);
+    if (!name) {
+      errors.push(`Row ${sheetRow}: Item Descr is required`);
       return;
     }
     if (seen.has(sku)) {
-      errors.push(`Parts row ${sheetRow}: duplicate SKU ${sku}`);
+      errors.push(`Row ${sheetRow}: duplicate Item ID ${sku}`);
       return;
     }
     seen.add(sku);
-
-    if (!name) errors.push(`Parts row ${sheetRow}: Name is required`);
-    if (!categorySlug) {
-      errors.push(`Parts row ${sheetRow}: Category is required`);
-    } else if (!categoryBySlug.has(categorySlug)) {
-      errors.push(
-        `Parts row ${sheetRow}: unknown category "${categorySlug}". Use an existing slug.`
-      );
-    }
-
-    const price = parsePrice(mapped.price_pkr);
-    if (price.error) errors.push(`Parts row ${sheetRow}: ${price.error}`);
-
-    const active = parseActive(mapped.active);
-    if (active.error) errors.push(`Parts row ${sheetRow}: ${active.error}`);
 
     rows.push({
       sheetRow,
       sku,
       name,
-      nameUr: nullable(mapped.name_ur),
+      masterPn: nullable(mapped['master_p/n'] ?? mapped.master_pn),
+      childPn: nullable(mapped['child_p/n'] ?? mapped.child_pn),
+      oemNumber: nullable(mapped.oem_no ?? mapped.oem_number),
+      defaultUom: nullable(mapped.default_uom),
+      itemModel: nullable(mapped.item_model),
+      catModel: nullable(mapped.cat_model),
+      modelG: nullable(mapped.model_g),
+      makeName: nullable(mapped.make),
+      groupName: nullable(mapped.group_id ?? mapped.group),
+      subGroupName: nullable(mapped.sub_group_id ?? mapped.sub_group),
       brand: nullable(mapped.brand),
-      oemNumber: nullable(mapped.oem_number ?? mapped.oem),
-      categorySlug,
-      pricePkr: price.value,
-      description: nullable(mapped.description),
-      descriptionUr: nullable(mapped.description_ur),
-      imageUrl: nullable(mapped.image_filename ?? mapped.image_url),
-      isActive: active.value,
+      origin: nullable(mapped.origin),
     });
   });
 
   return { rows, rowsRead: rows.length, skipped, errors };
 }
 
-function parseFitment(
-  sheet: XLSX.WorkSheet
-): { rows: FitmentRow[]; errors: string[] } {
-  const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
-    defval: '',
-    raw: true,
-  });
-  const rows: FitmentRow[] = [];
-  const errors: string[] = [];
+const UPSERT_BATCH = 100;
 
-  raw.forEach((record, index) => {
-    const sheetRow = index + 2;
-    const mapped = mapRecord(record);
-    const sku = text(mapped.sku);
-    const make = text(mapped.make);
-    const model = nullable(mapped.model);
-    const variant = nullable(mapped.variant);
-    if (!sku && !make && !model && !variant) return;
-
-    if (!sku) errors.push(`Fitment row ${sheetRow}: SKU is required`);
-    if (!make) errors.push(`Fitment row ${sheetRow}: Make is required`);
-    if (variant && !model) {
-      errors.push(`Fitment row ${sheetRow}: Variant needs a Model`);
-    }
-    if (make && !slugify(make)) {
-      errors.push(`Fitment row ${sheetRow}: Make "${make}" cannot be slugified`);
-    }
-    if (model && !slugify(model)) {
-      errors.push(`Fitment row ${sheetRow}: Model "${model}" cannot be slugified`);
-    }
-    if (variant && !slugify(variant)) {
-      errors.push(`Fitment row ${sheetRow}: Variant "${variant}" cannot be slugified`);
-    }
-
-    rows.push({ sheetRow, sku, make, model, variant });
-  });
-
-  return { rows, errors };
-}
-
-async function applyImport(
+async function applyClientImport(
   service: SupabaseClient,
-  parts: PartRow[],
-  fitments: FitmentRow[]
-): Promise<{ created: number; updated: number }> {
-  const { data: existing, error: existingError } = await service
-    .from('parts')
-    .select('id, sku')
-    .in(
-      'sku',
-      parts.map((row) => row.sku)
-    );
-  if (existingError) throw existingError;
+  parts: PartRow[]
+): Promise<{ created: number; updated: number; removed: number }> {
+  const importSkus = parts.map((row) => row.sku);
+  const existingBySku = new Set<string>();
+  for (let index = 0; index < importSkus.length; index += UPSERT_BATCH) {
+    const slice = importSkus.slice(index, index + UPSERT_BATCH);
+    const { data, error: existingError } = await service
+      .from('parts')
+      .select('sku')
+      .in('sku', slice);
+    if (existingError) throw existingError;
+    for (const row of data ?? []) {
+      existingBySku.add(row.sku as string);
+    }
+  }
 
-  const existingBySku = new Map(
-    (existing ?? []).map((row) => [row.sku as string, row.id as string])
-  );
-  const { data: categories, error: categoryError } = await service
-    .from('categories')
-    .select('id, slug');
-  if (categoryError) throw categoryError;
-  const categoryId = new Map(
-    (categories as Category[]).map((row) => [row.slug.toLowerCase(), row.id])
-  );
+  const { error: deactivateError } = await service
+    .from('parts')
+    .update({ is_active: false })
+    .not('sku', 'is', null);
+  if (deactivateError) throw deactivateError;
+
+  // Client ItemList has no fitment sheet; drop legacy prototype links on each import.
+  const { error: fitmentClearError } = await service
+    .from('part_fitments')
+    .delete()
+    .not('part_id', 'is', null);
+  if (fitmentClearError) throw fitmentClearError;
 
   let created = 0;
   let updated = 0;
-  const partIdBySku = new Map<string, string>();
 
-  for (const row of parts) {
-    const payload = {
+  for (let index = 0; index < parts.length; index += UPSERT_BATCH) {
+    const chunk = parts.slice(index, index + UPSERT_BATCH);
+    const payloads = chunk.map((row) => ({
       sku: row.sku,
       name: row.name,
-      name_ur: row.nameUr,
-      brand: row.brand,
+      master_pn: row.masterPn,
+      child_pn: row.childPn,
       oem_number: row.oemNumber,
-      category_id: categoryId.get(row.categorySlug) ?? null,
-      price_pkr: row.pricePkr,
-      description: row.description,
-      description_ur: row.descriptionUr,
-      image_url: row.imageUrl,
-      is_active: row.isActive,
+      default_uom: row.defaultUom,
+      item_model: row.itemModel,
+      cat_model: row.catModel,
+      model_g: row.modelG,
+      make_name: row.makeName,
+      group_name: row.groupName,
+      sub_group_name: row.subGroupName,
+      brand: row.brand,
+      origin: row.origin,
+      price_pkr: null,
+      category_id: null,
+      is_active: true,
       updated_at: new Date().toISOString(),
-    };
-    const { data, error } = await service
-      .from('parts')
-      .upsert(payload, { onConflict: 'sku' })
-      .select('id, sku')
-      .single();
-    if (error || !data) throw error ?? new Error(`Could not upsert ${row.sku}`);
-    partIdBySku.set(data.sku as string, data.id as string);
-    if (existingBySku.has(row.sku)) updated += 1;
-    else created += 1;
-  }
-
-  const skusWithFitment = [...new Set(fitments.map((row) => row.sku))];
-  const partIds = skusWithFitment
-    .map((sku) => partIdBySku.get(sku))
-    .filter((id): id is string => Boolean(id));
-
-  if (partIds.length > 0) {
-    const { error: deleteError } = await service
-      .from('part_fitments')
-      .delete()
-      .in('part_id', partIds);
-    if (deleteError) throw deleteError;
-  }
-
-  const makeCache = new Map<string, number>();
-  const modelCache = new Map<string, number>();
-  const variantCache = new Map<string, number>();
-  const inserts: {
-    part_id: string;
-    make_id: number;
-    model_id: number | null;
-    variant_id: number | null;
-  }[] = [];
-
-  for (const row of fitments) {
-    const partId = partIdBySku.get(row.sku);
-    if (!partId) continue;
-    const makeId = await upsertMake(service, makeCache, row.make);
-    const modelId = row.model
-      ? await upsertModel(service, modelCache, makeId, row.model)
-      : null;
-    const variantId =
-      row.variant && modelId
-        ? await upsertVariant(service, variantCache, modelId, row.variant)
-        : null;
-    inserts.push({
-      part_id: partId,
-      make_id: makeId,
-      model_id: modelId,
-      variant_id: variantId,
+    }));
+    const { error } = await service.from('parts').upsert(payloads, {
+      onConflict: 'sku',
     });
-  }
-
-  if (inserts.length > 0) {
-    const { error } = await service.from('part_fitments').insert(inserts);
     if (error) throw error;
+    for (const row of chunk) {
+      if (existingBySku.has(row.sku)) updated += 1;
+      else created += 1;
+    }
   }
 
-  return { created, updated };
-}
+  // Past quote lines may still reference old part rows; hide them from the catalogue
+  // instead of hard-deleting (FK on quote_request_items.part_id).
+  const { count: removedCount, error: removedError } = await service
+    .from('parts')
+    .select('*', { count: 'exact', head: true })
+    .eq('is_active', false);
+  if (removedError) throw removedError;
 
-async function upsertMake(
-  service: SupabaseClient,
-  cache: Map<string, number>,
-  name: string
-): Promise<number> {
-  const slug = slugify(name);
-  const cached = cache.get(slug);
-  if (cached) return cached;
-
-  const { data: existing } = await service
-    .from('makes')
-    .select('id')
-    .eq('slug', slug)
-    .maybeSingle();
-  if (existing) {
-    cache.set(slug, existing.id as number);
-    return existing.id as number;
-  }
-
-  const { data, error } = await service
-    .from('makes')
-    .insert({ slug, name, sort_order: 0 })
-    .select('id')
-    .single();
-  if (error || !data) throw error ?? new Error(`Could not create make ${name}`);
-  cache.set(slug, data.id as number);
-  return data.id as number;
-}
-
-async function upsertModel(
-  service: SupabaseClient,
-  cache: Map<string, number>,
-  makeId: number,
-  name: string
-): Promise<number> {
-  const slug = slugify(name);
-  const key = `${makeId}:${slug}`;
-  const cached = cache.get(key);
-  if (cached) return cached;
-
-  const { data: existing } = await service
-    .from('models')
-    .select('id')
-    .eq('make_id', makeId)
-    .eq('slug', slug)
-    .maybeSingle();
-  if (existing) {
-    cache.set(key, existing.id as number);
-    return existing.id as number;
-  }
-
-  const { data, error } = await service
-    .from('models')
-    .insert({ make_id: makeId, slug, name, sort_order: 0 })
-    .select('id')
-    .single();
-  if (error || !data) throw error ?? new Error(`Could not create model ${name}`);
-  cache.set(key, data.id as number);
-  return data.id as number;
-}
-
-async function upsertVariant(
-  service: SupabaseClient,
-  cache: Map<string, number>,
-  modelId: number,
-  name: string
-): Promise<number> {
-  const slug = slugify(name);
-  const key = `${modelId}:${slug}`;
-  const cached = cache.get(key);
-  if (cached) return cached;
-
-  const { data: existing } = await service
-    .from('variants')
-    .select('id')
-    .eq('model_id', modelId)
-    .eq('slug', slug)
-    .maybeSingle();
-  if (existing) {
-    cache.set(key, existing.id as number);
-    return existing.id as number;
-  }
-
-  const { data, error } = await service
-    .from('variants')
-    .insert({ model_id: modelId, slug, name, sort_order: 0 })
-    .select('id')
-    .single();
-  if (error || !data) throw error ?? new Error(`Could not create variant ${name}`);
-  cache.set(key, data.id as number);
-  return data.id as number;
-}
-
-function findSheet(workbook: XLSX.WorkBook, wanted: string): string | null {
-  return (
-    workbook.SheetNames.find((name) => name.trim().toLowerCase() === wanted) ??
-    null
-  );
+  return { created, updated, removed: removedCount ?? 0 };
 }
 
 function mapRecord(record: Record<string, unknown>): Record<string, unknown> {
@@ -519,7 +325,7 @@ function slugify(value: string): string {
 }
 
 function emptySummary(errors: string[]): ImportSummary {
-  return { rowsRead: 0, created: 0, updated: 0, skipped: 0, errors };
+  return { rowsRead: 0, created: 0, updated: 0, removed: 0, skipped: 0, errors };
 }
 
 function readSecretKey(): string | null {

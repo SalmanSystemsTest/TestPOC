@@ -88,9 +88,13 @@ an email that is not on this list to prove the gate rejects it.
 
 | Email | Password | Expected |
 |---|---|---|
-| `buyer@ssgtest.com` | `Test1234!` | created — on the allowlist |
-| `admin@ssgtest.com` | `Test1234!` | created — on the allowlist, admin role |
-| `nobody@ssgtest.com` | `Test1234!` | **rejected** — proves the hook works |
+| `buyer@ssgtest.com` | `SsgTest!2026` | created — on the allowlist |
+| `adminssg.67341cfe@ssgtest.com` (or your admin row’s email) | see team dev notes | created — on the allowlist, admin role |
+| `nobody@ssgtest.com` | any strong password | **rejected** — proves the hook works |
+
+If login says email or password is wrong, the Auth user password in the
+dashboard must match the table above — recreating a user with a new password
+does not change an existing account until you reset it there.
 
 Tick "Auto Confirm User" on each.
 

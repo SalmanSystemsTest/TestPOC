@@ -93,6 +93,7 @@ export default function AdminUploadScreen() {
                 read: summary.rowsRead,
                 created: summary.created,
                 updated: summary.updated,
+                removed: summary.removed,
                 skipped: summary.skipped,
               })}
             </AppText>
