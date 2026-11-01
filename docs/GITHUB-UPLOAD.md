@@ -1,5 +1,8 @@
 # Move project to another PC and push to GitHub
 
+**Printable PDF:** `docs/SSG-github-vercel-deploy-guide.pdf` (regenerate with
+`python docs/generate-github-deploy-guide-pdf.py`).
+
 Use this after copying the zip from the locked-down PC.
 
 ## What is in the zip
@@ -83,7 +86,7 @@ git push origin master
 ## Vercel (once, on the laptop or in browser)
 
 1. Import the GitHub repo in Vercel.
-2. Build: `npx expo export -p web`, output directory: `dist`.
+2. Build: `npm run build` (or `npx expo export -p web`), output directory: `dist` (see repo `vercel.json`).
 3. Add the same `EXPO_PUBLIC_*` variables as in `.env.local`.
 4. Deploy.
 

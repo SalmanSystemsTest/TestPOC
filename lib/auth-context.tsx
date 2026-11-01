@@ -42,11 +42,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       // A real sign-in starts a clean buyer workspace. Token refresh and
-      // page restore must not wipe cart or favourites.
+      // page restore must not wipe cart or favourites. Do not queryClient.clear()
+      // here — it cancels in-flight catalogue loads and leaves the home spinner stuck.
       if (event === 'SIGNED_IN' && next) {
-        void startFreshBuyerSession(next.user.id).finally(() => {
-          queryClient.clear();
-        });
+        const userId = next.user.id;
+        void startFreshBuyerSession(userId)
+          .catch(() => undefined)
+          .finally(() => {
+            void queryClient.invalidateQueries({ queryKey: ['cart'] });
+            void queryClient.invalidateQueries({ queryKey: ['favourites'] });
+          });
       }
     });
 

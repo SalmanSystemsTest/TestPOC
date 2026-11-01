@@ -3,6 +3,7 @@
 import {
   useInfiniteQuery,
   useQuery,
+  type InfiniteData,
   type QueryClient,
 } from '@tanstack/react-query';
 import { supabase } from '../supabase';
@@ -12,6 +13,40 @@ import type { CatalogueFilters } from './catalogue-filters';
 export type Part = Tables<'parts'>;
 
 export const PAGE_SIZE = 20;
+
+export function dedupePartList(parts: Part[]): Part[] {
+  const seen = new Set<string>();
+  const rows: Part[] = [];
+  for (const part of parts) {
+    if (seen.has(part.id)) continue;
+    seen.add(part.id);
+    rows.push(part);
+  }
+  return rows;
+}
+
+/** Infinite pages can overlap when SQL order is not unique (e.g. same part name). */
+export function flattenUniquePartPages(pages: Part[][] | undefined): Part[] {
+  if (!pages?.length) return [];
+  return dedupePartList(pages.flat());
+}
+
+export function dedupeInfinitePartPages(
+  data: InfiniteData<Part[]>
+): InfiniteData<Part[]> {
+  const seen = new Set<string>();
+  const pages: Part[][] = [];
+  for (const page of data.pages) {
+    const next: Part[] = [];
+    for (const part of page) {
+      if (seen.has(part.id)) continue;
+      seen.add(part.id);
+      next.push(part);
+    }
+    pages.push(next);
+  }
+  return { ...data, pages };
+}
 
 export type PartFilters = {
   query: string;
@@ -53,7 +88,7 @@ async function fetchPartsPage(
     p_offset: offset,
   });
   if (error) throw error;
-  return data ?? [];
+  return dedupePartList(data ?? []);
 }
 
 export function prefetchCatalogue(queryClient: QueryClient): Promise<void> {
@@ -70,8 +105,11 @@ export function usePartsSearch(filters: PartFilters) {
     queryKey: ['parts', 'search', filters],
     initialPageParam: 0,
     queryFn: ({ pageParam }) => fetchPartsPage(filters, pageParam),
-    getNextPageParam: (lastPage: Part[], allPages: Part[][]) =>
-      lastPage.length < PAGE_SIZE ? undefined : allPages.length * PAGE_SIZE,
+    getNextPageParam: (lastPage: Part[], allPages: Part[][]) => {
+      if (lastPage.length < PAGE_SIZE) return undefined;
+      return allPages.reduce((offset, page) => offset + page.length, 0);
+    },
+    select: dedupeInfinitePartPages,
     staleTime: 2 * 60 * 1000,
   });
 }

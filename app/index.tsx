@@ -11,7 +11,9 @@ export default function Index() {
 
   if (!ready || !authReady) return null;
   if (!language) return <Redirect href={'/(auth)/language' as Href} />;
-  if (!session) return <Redirect href={'/(auth)/sign-in' as Href} />;
+  if (!session) {
+    return <Redirect href={'/(auth)/sign-in' as Href} />;
+  }
   if (profile.isPending) return null;
   if (!isProfileComplete(profile.data)) {
     return <Redirect href={'/(auth)/complete-profile' as Href} />;

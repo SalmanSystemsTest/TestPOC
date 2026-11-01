@@ -20,6 +20,12 @@ export default function AdminHomeScreen() {
       <AppText style={styles.muted}>{t('admin.subtitle')}</AppText>
       <View style={styles.list}>
         <AdminLink
+          icon="stats-chart-outline"
+          label={t('admin.analytics')}
+          onPress={() => router.push('/admin/analytics')}
+          colors={colors}
+        />
+        <AdminLink
           icon="person-add-outline"
           label={t('admin.buyers')}
           onPress={() => router.push('/admin/users')}

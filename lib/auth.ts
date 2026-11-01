@@ -114,6 +114,74 @@ export async function completeSignIn(params: {
   }
 }
 
+export type SignUpResult =
+  | { status: 'signed_in' }
+  | { status: 'code_sent' }
+  | { status: 'not_registered' }
+  | { status: 'already_registered' }
+  | { status: 'bad_credentials' }
+  /** Auth user exists but Supabase requires email confirmation before sign-in. */
+  | { status: 'confirmation_required' }
+  | { status: 'error'; message: string };
+
+function isEmailNotConfirmed(message: string): boolean {
+  return message.toLowerCase().includes('email not confirmed');
+}
+
+/** Create an Auth account after allowlist eligibility is confirmed. */
+export async function registerAccount(params: {
+  identifier: string;
+  password?: string;
+}): Promise<SignUpResult> {
+  const { identifier, password } = params;
+
+  try {
+    if (isDevAuth) {
+      if (!password) {
+        return { status: 'error', message: 'Password required in dev mode' };
+      }
+
+      const email = identifier.trim().toLowerCase();
+      const { data, error } = await supabase.auth.signUp({ email, password });
+
+      if (error) {
+        if (isNotRegistered(error.message)) return { status: 'not_registered' };
+        if (error.message.toLowerCase().includes('already registered')) {
+          return { status: 'already_registered' };
+        }
+        return { status: 'error', message: error.message };
+      }
+
+      if (data.session) return { status: 'signed_in' };
+
+      if (data.user) {
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (!signInError) return { status: 'signed_in' };
+        if (isEmailNotConfirmed(signInError.message)) {
+          return { status: 'confirmation_required' };
+        }
+        return { status: 'error', message: signInError.message };
+      }
+
+      return { status: 'error', message: error?.message ?? 'Sign-up did not return a user' };
+    }
+
+    const { error } = await supabase.auth.signInWithOtp({
+      phone: normalisePhone(identifier),
+    });
+    if (error) {
+      if (isNotRegistered(error.message)) return { status: 'not_registered' };
+      return { status: 'error', message: error.message };
+    }
+    return { status: 'code_sent' };
+  } catch (e) {
+    return { status: 'error', message: e instanceof Error ? e.message : 'Unknown' };
+  }
+}
+
 export async function signOut(): Promise<void> {
   await supabase.auth.signOut();
 }

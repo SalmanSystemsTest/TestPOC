@@ -5,7 +5,6 @@ import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
   FlatList,
-  Linking,
   Pressable,
   StyleSheet,
   View,
@@ -23,7 +22,8 @@ import { PartCard } from '@/components/PartCard';
 import { PartListRow } from '@/components/PartListRow';
 import { SearchBar } from '@/components/SearchBar';
 import { useAuthSession } from '@/lib/auth-context';
-import { config, hasWhatsapp } from '@/lib/config';
+import { hasWhatsapp } from '@/lib/config';
+import { openSsgWhatsapp } from '@/lib/order-whatsapp';
 import {
   emptyHierarchySelection,
   hierarchyHasSelection,
@@ -35,7 +35,11 @@ import {
   emptyCatalogueFilters,
   type CatalogueFilters,
 } from '@/lib/queries/catalogue-filters';
-import { usePartsSearch, type Part } from '@/lib/queries/parts';
+import {
+  flattenUniquePartPages,
+  usePartsSearch,
+  type Part,
+} from '@/lib/queries/parts';
 import { useProfile } from '@/lib/queries/profile';
 import { useTheme, type ThemeColors } from '@/lib/theme';
 
@@ -109,7 +113,7 @@ export default function HomeScreen() {
   );
 
   const rows = useMemo(
-    () => (parts.data?.pages ?? []).flat(),
+    () => flattenUniquePartPages(parts.data?.pages),
     [parts.data?.pages]
   );
 
@@ -180,11 +184,8 @@ export default function HomeScreen() {
             accessibilityLabel={t('part.contactSsg')}
             disabled={!hasWhatsapp}
             onPress={() => {
-              if (!hasWhatsapp || !config.ssgWhatsapp) return;
-              const message = t('catalogue.whatsappMessage');
-              void Linking.openURL(
-                `https://wa.me/${config.ssgWhatsapp}?text=${encodeURIComponent(message)}`
-              );
+              if (!hasWhatsapp) return;
+              openSsgWhatsapp(t('catalogue.whatsappMessage'));
             }}
             style={[
               styles.whatsapp,
@@ -232,9 +233,10 @@ export default function HomeScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <FlatList
-        key={viewMode}
+        key={viewMode === 'grid' ? 'catalogue-grid' : 'catalogue-list'}
         data={viewMode === 'grid' || showHierarchySummary ? rows : []}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item, index) => `${item.id}-${index}`}
+        extraData={rows.length}
         renderItem={viewMode === 'grid' ? renderGridItem : renderListItem}
         numColumns={viewMode === 'grid' ? 2 : 1}
         columnWrapperStyle={viewMode === 'grid' ? styles.column : undefined}

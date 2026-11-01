@@ -22,6 +22,12 @@ function optional(value: string | undefined): string | null {
   return trimmed && trimmed.length > 0 ? trimmed : null;
 }
 
+/** Digits only — wa.me links break on spaces, +, or dashes. */
+function phoneDigits(value: string | undefined): string | null {
+  const digits = value?.trim().replace(/\D/g, '');
+  return digits && digits.length > 0 ? digits : null;
+}
+
 const rawAuthMode = process.env.EXPO_PUBLIC_AUTH_MODE ?? 'dev';
 
 if (rawAuthMode !== 'dev' && rawAuthMode !== 'phone') {
@@ -53,7 +59,7 @@ export const config = {
    * Null until SSG provides real numbers. Consumers must handle null by
    * disabling the relevant button rather than rendering a broken link.
    */
-  ssgWhatsapp: optional(process.env.EXPO_PUBLIC_SSG_WHATSAPP),
+  ssgWhatsapp: phoneDigits(process.env.EXPO_PUBLIC_SSG_WHATSAPP),
   ssgPhone: optional(process.env.EXPO_PUBLIC_SSG_PHONE),
 } as const;
 

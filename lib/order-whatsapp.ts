@@ -1,5 +1,5 @@
-import { Linking } from 'react-native';
 import { config, hasWhatsapp } from './config';
+import { openExternalUrl } from './open-external-url';
 import { localisedName } from './format';
 import type { CartLine, SubmittedQuote } from './queries/cart';
 import type { Profile } from './queries/profile';
@@ -77,9 +77,18 @@ export function buildOrderWhatsappMessage(params: {
   return blocks.join('\n');
 }
 
-export function openSsgWhatsapp(text: string): void {
-  if (!hasWhatsapp || !config.ssgWhatsapp) return;
-  void Linking.openURL(
-    `https://wa.me/${config.ssgWhatsapp}?text=${encodeURIComponent(text)}`
-  );
+export function buildSsgWhatsappUrl(text?: string): string | null {
+  if (!hasWhatsapp || !config.ssgWhatsapp) return null;
+  const base = `https://wa.me/${config.ssgWhatsapp}`;
+  const trimmed = text?.trim();
+  if (trimmed && trimmed.length > 0) {
+    return `${base}?text=${encodeURIComponent(trimmed)}`;
+  }
+  return base;
+}
+
+export function openSsgWhatsapp(text?: string): void {
+  const url = buildSsgWhatsappUrl(text);
+  if (!url) return;
+  void openExternalUrl(url);
 }

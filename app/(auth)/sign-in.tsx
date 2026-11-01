@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { type Href, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { type Href, useLocalSearchParams, useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
@@ -14,6 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppText } from '@/components/AppText';
 import { BrandLogo } from '@/components/BrandLogo';
+import { PasswordInput } from '@/components/PasswordInput';
 import { signInShape, startSignIn } from '@/lib/auth';
 import { useTheme, type ThemeColors } from '@/lib/theme';
 
@@ -25,7 +26,16 @@ export default function SignInScreen() {
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const params = useLocalSearchParams<{ signupError?: string }>();
   const [errorKey, setErrorKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (params.signupError === 'signupNotAuthorized') {
+      setErrorKey('auth.signupNotAuthorized');
+    } else if (params.signupError === 'signupAlreadyRegistered') {
+      setErrorKey('auth.signupAlreadyRegistered');
+    }
+  }, [params.signupError]);
 
   async function submit() {
     if (!identifier.trim() || (signInShape.needsPassword && !password)) return;
@@ -35,7 +45,7 @@ export default function SignInScreen() {
     setSubmitting(false);
 
     if (result.status === 'signed_in') {
-      router.replace('/(tabs)' as Href);
+      router.replace('/' as Href);
     } else if (result.status === 'code_sent') {
       router.push({
         pathname: '/(auth)/verify',
@@ -67,7 +77,7 @@ export default function SignInScreen() {
         <AppText weight="600" style={styles.heading}>
           {t('auth.welcome')}
         </AppText>
-        <AppText style={styles.subtitle}>{t('auth.subtitle')}</AppText>
+        <AppText style={styles.subtitle}>{t('auth.subtitleSignIn')}</AppText>
 
         <AppText variant="caption" style={styles.label}>
           {t(signInShape.identifierType === 'email' ? 'auth.email' : 'auth.phone')}
@@ -95,14 +105,12 @@ export default function SignInScreen() {
             <AppText variant="caption" style={styles.label}>
               {t('auth.password')}
             </AppText>
-            <TextInput
-              autoCapitalize="none"
+            <PasswordInput
               editable={!submitting}
+              hidePasswordLabel={t('auth.hidePassword')}
               onChangeText={setPassword}
               placeholder={t('auth.passwordPlaceholder')}
-              placeholderTextColor={colors.textMuted}
-              secureTextEntry
-              style={styles.field}
+              showPasswordLabel={t('auth.showPassword')}
               value={password}
             />
           </>
@@ -128,6 +136,21 @@ export default function SignInScreen() {
             </AppText>
           )}
         </Pressable>
+
+        <View style={styles.signUpRow}>
+          <AppText variant="caption" style={styles.signUpPrompt}>
+            {t('auth.signUpPrompt')}
+          </AppText>
+          <Pressable
+            accessibilityRole="button"
+            disabled={submitting}
+            onPress={() => router.push('/(auth)/sign-up' as Href)}
+          >
+            <AppText weight="600" style={styles.signUpLink}>
+              {t('auth.signUp')}
+            </AppText>
+          </Pressable>
+        </View>
 
         <View style={styles.invite}>
           <Ionicons name="lock-closed-outline" color={colors.textMuted} size={14} />
@@ -210,6 +233,21 @@ function makeStyles(colors: ThemeColors) {
     submitText: {
       color: colors.accentText,
       fontSize: 15,
+    },
+    signUpRow: {
+      marginTop: 20,
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+    },
+    signUpPrompt: {
+      color: colors.textSecondary,
+    },
+    signUpLink: {
+      color: colors.primary,
+      fontSize: 13,
     },
     invite: {
       marginTop: 'auto',

@@ -14,7 +14,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppText } from '@/components/AppText';
 import { useAuthSession } from '@/lib/auth-context';
-import { config, hasWhatsapp } from '@/lib/config';
+import { hasWhatsapp } from '@/lib/config';
+import { openSsgWhatsapp } from '@/lib/order-whatsapp';
 import { categoryArt } from '@/lib/category-art';
 import { localisedName } from '@/lib/format';
 import { partCardSubtitle, partDetailRows } from '@/lib/part-display';
@@ -80,12 +81,11 @@ export default function PartScreen() {
       : row.description;
 
   const openWhatsapp = () => {
-    if (!hasWhatsapp || !config.ssgWhatsapp) return;
-    const message = t('part.whatsappMessage', {
-      name: localisedName(row, i18n.language),
-    });
-    void Linking.openURL(
-      `https://wa.me/${config.ssgWhatsapp}?text=${encodeURIComponent(message)}`
+    if (!hasWhatsapp) return;
+    openSsgWhatsapp(
+      t('part.whatsappMessage', {
+        name: localisedName(row, i18n.language),
+      })
     );
   };
 

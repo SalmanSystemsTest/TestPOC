@@ -4,7 +4,6 @@ import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
-  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -16,6 +15,8 @@ import { useAuthSession } from '@/lib/auth-context';
 import { signOut } from '@/lib/auth';
 import { APP_VERSION } from '@/lib/app-version';
 import { config, hasWhatsapp } from '@/lib/config';
+import { openExternalUrl } from '@/lib/open-external-url';
+import { openSsgWhatsapp } from '@/lib/order-whatsapp';
 import { useLanguage, type LanguageCode } from '@/lib/i18n';
 import {
   useProfile,
@@ -44,12 +45,12 @@ export default function ProfileScreen() {
   };
 
   const contactSsg = () => {
-    if (hasWhatsapp && config.ssgWhatsapp) {
-      void Linking.openURL(`https://wa.me/${config.ssgWhatsapp}`);
+    if (hasWhatsapp) {
+      openSsgWhatsapp();
       return;
     }
     if (config.ssgPhone) {
-      void Linking.openURL(`tel:${config.ssgPhone}`);
+      void openExternalUrl(`tel:${config.ssgPhone}`);
     }
   };
 

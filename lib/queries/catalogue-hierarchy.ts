@@ -1,7 +1,11 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { supabase } from '../supabase';
-import type { Part } from './parts';
-import { PAGE_SIZE } from './parts';
+import {
+  dedupeInfinitePartPages,
+  dedupePartList,
+  PAGE_SIZE,
+  type Part,
+} from './parts';
 
 export type HierarchySelection = {
   makes: string[];
@@ -119,7 +123,7 @@ async function fetchHierarchyPartsPage(
     p_offset: offset,
   });
   if (error) throw error;
-  return data ?? [];
+  return dedupePartList(data ?? []);
 }
 
 export function useHierarchyPartsSearch(filters: HierarchyPartFilters, enabled: boolean) {
@@ -128,8 +132,11 @@ export function useHierarchyPartsSearch(filters: HierarchyPartFilters, enabled: 
     enabled,
     initialPageParam: 0,
     queryFn: ({ pageParam }) => fetchHierarchyPartsPage(filters, pageParam),
-    getNextPageParam: (lastPage: Part[], allPages: Part[][]) =>
-      lastPage.length < PAGE_SIZE ? undefined : allPages.length * PAGE_SIZE,
+    getNextPageParam: (lastPage: Part[], allPages: Part[][]) => {
+      if (lastPage.length < PAGE_SIZE) return undefined;
+      return allPages.reduce((offset, page) => offset + page.length, 0);
+    },
+    select: dedupeInfinitePartPages,
     staleTime: 2 * 60 * 1000,
   });
 }
