@@ -543,6 +543,11 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      check_signup_eligibility: {
+        Args: { p_identifier: string }
+        Returns: Json
+      }
+      get_admin_analytics: { Args: never; Returns: Json }
       get_catalogue_filter_options: { Args: never; Returns: Json }
       get_hierarchical_catalogue_options: {
         Args: {
